@@ -106,7 +106,8 @@ class GameScene: SKScene {
                 // Add resource icons for non-block cells, or block info for blocks
                 if case .block(let blockType) = cell.content {
                     // Display block information
-                    if case .data(let points, let transmissionSpawn) = blockType {
+                    switch blockType {
+                    case .data(let points, let transmissionSpawn):
                         // Show transmission spawn count in top-left corner
                         let spawnCount = cell.isSiphoned ? 0 : transmissionSpawn
                         let spawnLabel = SKLabelNode(text: "\(spawnCount)")
@@ -129,22 +130,81 @@ class GameScene: SKScene {
                         pointsLabel.position = CGPoint(x: 0, y: 0)
                         pointsLabel.zPosition = 2
                         cellNode.addChild(pointsLabel)
+
+                    case .program(let program, let transmissionSpawn):
+                        // Show transmission spawn count in top-left corner
+                        let spawnCount = cell.isSiphoned ? 0 : transmissionSpawn
+                        let spawnLabel = SKLabelNode(text: "\(spawnCount)")
+                        spawnLabel.fontName = "Helvetica-Bold"
+                        spawnLabel.fontSize = 16
+                        spawnLabel.fontColor = .init(red: 1.0, green: 0.5, blue: 0.0, alpha: 1.0) // Orange
+                        spawnLabel.verticalAlignmentMode = .top
+                        spawnLabel.horizontalAlignmentMode = .left
+                        spawnLabel.position = CGPoint(x: -Constants.cellSize / 2 + 3, y: Constants.cellSize / 2 - 3)
+                        spawnLabel.zPosition = 2
+                        cellNode.addChild(spawnLabel)
+
+                        // Show program name in center
+                        let programLabel = SKLabelNode(text: program.type.displayName)
+                        programLabel.fontName = "Menlo-Bold"
+                        programLabel.fontSize = 14
+                        programLabel.fontColor = .init(red: 0.5, green: 0.9, blue: 1.0, alpha: 1.0) // Cyan
+                        programLabel.verticalAlignmentMode = .center
+                        programLabel.horizontalAlignmentMode = .center
+                        programLabel.position = CGPoint(x: 0, y: 0)
+                        programLabel.zPosition = 2
+                        cellNode.addChild(programLabel)
+
+                    case .question(let isData, let points, let program, let transmissionSpawn):
+                        // Show ? for transmission spawn count in top-left corner (hidden until siphoned)
+                        let spawnText = "?"
+                        let spawnLabel = SKLabelNode(text: spawnText)
+                        spawnLabel.fontName = "Helvetica-Bold"
+                        spawnLabel.fontSize = 16
+                        spawnLabel.fontColor = .init(red: 1.0, green: 0.5, blue: 0.0, alpha: 1.0) // Orange
+                        spawnLabel.verticalAlignmentMode = .top
+                        spawnLabel.horizontalAlignmentMode = .left
+                        spawnLabel.position = CGPoint(x: -Constants.cellSize / 2 + 3, y: Constants.cellSize / 2 - 3)
+                        spawnLabel.zPosition = 2
+                        cellNode.addChild(spawnLabel)
+
+                        // Show question mark in center
+                        let questionLabel = SKLabelNode(text: "?")
+                        questionLabel.fontName = "Helvetica-Bold"
+                        questionLabel.fontSize = 32
+                        questionLabel.fontColor = .init(red: 1.0, green: 0.8, blue: 0.2, alpha: 1.0) // Yellow
+                        questionLabel.verticalAlignmentMode = .center
+                        questionLabel.horizontalAlignmentMode = .center
+                        questionLabel.position = CGPoint(x: 0, y: 0)
+                        questionLabel.zPosition = 2
+                        cellNode.addChild(questionLabel)
                     }
                 } else {
-                    // Show resource icons stacked vertically in top-left corner
-                    let (icon, amount) = resourceIcon(for: cell.resources)
-                    if !icon.isEmpty {
-                        for i in 0..<amount {
-                            let resourceIcon = SKLabelNode(text: icon)
-                            resourceIcon.fontSize = 14
-                            resourceIcon.verticalAlignmentMode = .top
-                            resourceIcon.horizontalAlignmentMode = .left
-                            // Position in top-left corner, stack vertically
-                            let xOffset: CGFloat = -Constants.cellSize / 2 + 3
-                            let yOffset: CGFloat = Constants.cellSize / 2 - CGFloat(i * 14) - 3
-                            resourceIcon.position = CGPoint(x: xOffset, y: yOffset)
-                            resourceIcon.zPosition = 2
-                            cellNode.addChild(resourceIcon)
+                    // Show smiley for siphon center, otherwise show resources
+                    if cell.siphonCenter {
+                        let smiley = SKLabelNode(text: "😊")
+                        smiley.fontSize = 14
+                        smiley.verticalAlignmentMode = .top
+                        smiley.horizontalAlignmentMode = .left
+                        smiley.position = CGPoint(x: -Constants.cellSize / 2 + 3, y: Constants.cellSize / 2 - 3)
+                        smiley.zPosition = 2
+                        cellNode.addChild(smiley)
+                    } else {
+                        // Show resource icons stacked vertically in top-left corner
+                        let (icon, amount) = resourceIcon(for: cell.resources)
+                        if !icon.isEmpty {
+                            for i in 0..<amount {
+                                let resourceIcon = SKLabelNode(text: icon)
+                                resourceIcon.fontSize = 14
+                                resourceIcon.verticalAlignmentMode = .top
+                                resourceIcon.horizontalAlignmentMode = .left
+                                // Position in top-left corner, stack vertically
+                                let xOffset: CGFloat = -Constants.cellSize / 2 + 3
+                                let yOffset: CGFloat = Constants.cellSize / 2 - CGFloat(i * 14) - 3
+                                resourceIcon.position = CGPoint(x: xOffset, y: yOffset)
+                                resourceIcon.zPosition = 2
+                                cellNode.addChild(resourceIcon)
+                            }
                         }
                     }
                 }
@@ -285,10 +345,22 @@ class GameScene: SKScene {
         let hud = SKNode()
         hud.name = "hud"
 
+        // Format owned programs list
+        let programsList: String
+        if gameState.ownedPrograms.isEmpty {
+            programsList = "None"
+        } else {
+            programsList = gameState.ownedPrograms
+                .sorted { $0.rawValue < $1.rawValue }
+                .map { $0.displayName }
+                .joined(separator: ", ")
+        }
+
         let hudText = """
         Stage: \(gameState.currentStage)/\(Constants.totalStages)  Turn: \(gameState.turnCount)
         Health: \(gameState.player.health.emoji)  Score: \(gameState.player.score)
-        Credits: \(gameState.player.credits)  Energy: \(gameState.player.energy)  Siphons: \(gameState.player.dataSiphons)
+        💰\(gameState.player.credits)  🔋\(gameState.player.energy)  💎\(gameState.player.dataSiphons)
+        Programs: \(programsList)
         Controls: Arrows = Move/Attack  |  S = Siphon (+ pattern)
         """
 
@@ -296,7 +368,7 @@ class GameScene: SKScene {
         label.fontName = "Menlo-Bold"
         label.fontSize = 13
         label.fontColor = .white
-        label.numberOfLines = 4
+        label.numberOfLines = 5
         label.horizontalAlignmentMode = .left
         label.verticalAlignmentMode = .top
         label.position = CGPoint(x: 10, y: size.height - 10)

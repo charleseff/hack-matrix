@@ -13,6 +13,8 @@ class GameState {
     var stepActive: Bool
     var gameHistory: [GameStateSnapshot]
     var pendingSiphonTransmissions: Int
+    var atkPlusUsedThisStage: Bool
+    var transmissionsRevealed: Bool  // For show program
 
     init() {
         self.grid = Grid()
@@ -26,6 +28,8 @@ class GameState {
         self.stepActive = false
         self.gameHistory = []
         self.pendingSiphonTransmissions = 0
+        self.atkPlusUsedThisStage = false
+        self.transmissionsRevealed = false
 
         let corners = grid.getCornerPositions()
         let playerCorner = corners.randomElement()!
@@ -40,6 +44,8 @@ class GameState {
         cryptogsRevealed = false
         scheduledTasksDisabled = false
         stepActive = false
+        atkPlusUsedThisStage = false
+        transmissionsRevealed = false
 
         grid = Grid()
 
@@ -120,14 +126,38 @@ class GameState {
 
                 if case .empty = cell.content {
                     let isData = Bool.random()  // 50% data, 50% program
-                    if isData {
-                        // Data blocks: 1-9 points (equally likely), transmissionSpawn = points
-                        let pointsAndSpawn = Int.random(in: 1...9)
-                        cell.content = .block(.data(points: pointsAndSpawn, transmissionSpawn: pointsAndSpawn))
+                    let isQuestion = Double.random(in: 0..<1) < 0.1  // 10% are question blocks
+
+                    if isQuestion {
+                        // Question block - hide the contents
+                        if isData {
+                            let pointsAndSpawn = Int.random(in: 1...9)
+                            cell.content = .block(.question(
+                                isData: true,
+                                points: pointsAndSpawn,
+                                program: nil,
+                                transmissionSpawn: pointsAndSpawn
+                            ))
+                        } else {
+                            let programType = ProgramType.allCases.randomElement()!
+                            let program = Program(type: programType)
+                            cell.content = .block(.question(
+                                isData: false,
+                                points: nil,
+                                program: program,
+                                transmissionSpawn: program.enemySpawnCost
+                            ))
+                        }
                     } else {
-                        let programType = ProgramType.allCases.randomElement()!
-                        let program = Program(type: programType)
-                        cell.content = .block(.program(program, transmissionSpawn: program.enemySpawnCost))
+                        // Regular block - visible
+                        if isData {
+                            let pointsAndSpawn = Int.random(in: 1...9)
+                            cell.content = .block(.data(points: pointsAndSpawn, transmissionSpawn: pointsAndSpawn))
+                        } else {
+                            let programType = ProgramType.allCases.randomElement()!
+                            let program = Program(type: programType)
+                            cell.content = .block(.program(program, transmissionSpawn: program.enemySpawnCost))
+                        }
                     }
                     placed += 1
                 }
@@ -395,12 +425,20 @@ class GameState {
 
     func getOccupiedPositions(for movingEnemy: Enemy?) -> Set<String> {
         var positions = Set<String>()
+
+        // Add enemy positions
         for enemy in enemies {
             if let movingEnemy = movingEnemy, enemy.id == movingEnemy.id {
                 continue
             }
             positions.insert("\(enemy.row),\(enemy.col)")
         }
+
+        // Add transmission positions (enemies cannot move onto transmissions)
+        for transmission in transmissions {
+            positions.insert("\(transmission.row),\(transmission.col)")
+        }
+
         return positions
     }
 
@@ -467,6 +505,9 @@ class GameState {
         // Get cells in siphon range (current cell + cardinal directions)
         let siphonCells = grid.getSiphonCells(centerRow: player.row, centerCol: player.col)
 
+        // Mark center cell (where player is standing)
+        grid.cells[player.row][player.col].siphonCenter = true
+
         // Process each cell
         for cell in siphonCells {
             // Skip if already siphoned
@@ -480,16 +521,24 @@ class GameState {
                 case .data(let points, let transmissionSpawn):
                     player.score += points
                     pendingSiphonTransmissions += transmissionSpawn
+                    // Update block to show 0 transmissions since they're being spawned
+                    cell.content = .block(.data(points: points, transmissionSpawn: 0))
 
                 case .program(let program, let transmissionSpawn):
                     ownedPrograms.insert(program.type)
                     pendingSiphonTransmissions += transmissionSpawn
+                    // Update block to show 0 transmissions since they're being spawned
+                    cell.content = .block(.program(program, transmissionSpawn: 0))
 
                 case .question(let isData, let points, let program, let transmissionSpawn):
                     if isData, let pts = points {
                         player.score += pts
+                        // Reveal the question block as a data block (with 0 transmissions since they're being spawned)
+                        cell.content = .block(.data(points: pts, transmissionSpawn: 0))
                     } else if let prog = program {
                         ownedPrograms.insert(prog.type)
+                        // Reveal the question block as a program block (with 0 transmissions since they're being spawned)
+                        cell.content = .block(.program(prog, transmissionSpawn: 0))
                     }
                     pendingSiphonTransmissions += transmissionSpawn
                 }
@@ -516,6 +565,135 @@ class GameState {
 
         // Don't advance turn here - let caller handle animated turn flow
         return true
+    }
+
+    // MARK: - Program Execution
+
+    /// Check if a program can be executed
+    func canExecuteProgram(_ type: ProgramType) -> (canExecute: Bool, reason: String?) {
+        guard ownedPrograms.contains(type) else {
+            return (false, "Not owned")
+        }
+
+        let program = Program(type: type)
+
+        // Check resources
+        if player.credits < program.cost.credits {
+            return (false, "Need \(program.cost.credits)💰")
+        }
+        if player.energy < program.cost.energy {
+            return (false, "Need \(program.cost.energy)🔋")
+        }
+
+        // Check if applicable to current board state
+        if !isProgramApplicable(type) {
+            return (false, "N/A")
+        }
+
+        return (true, nil)
+    }
+
+    /// Check if program is applicable to current board state
+    func isProgramApplicable(_ type: ProgramType) -> Bool {
+        switch type {
+        case .push, .pull, .poly:
+            // Need enemies on board
+            return !enemies.isEmpty
+
+        case .crash:
+            // Check 8 surrounding cells for blocks, enemies, or transmissions
+            for rowOffset in -1...1 {
+                for colOffset in -1...1 {
+                    if rowOffset == 0 && colOffset == 0 { continue }
+                    let checkRow = player.row + rowOffset
+                    let checkCol = player.col + colOffset
+                    if grid.isValidPosition(row: checkRow, col: checkCol) {
+                        let cell = grid.cells[checkRow][checkCol]
+                        if cell.hasBlock ||
+                           enemies.contains(where: { $0.row == checkRow && $0.col == checkCol }) ||
+                           transmissions.contains(where: { $0.row == checkRow && $0.col == checkCol }) {
+                            return true
+                        }
+                    }
+                }
+            }
+            return false
+
+        case .warp:
+            // Can warp if there are enemies OR transmissions
+            return !enemies.isEmpty || !transmissions.isEmpty
+
+        case .exch:
+            return player.credits >= 4
+
+        case .show:
+            return !cryptogsRevealed || !transmissionsRevealed
+
+        case .reset:
+            return player.health.rawValue < 3
+
+        case .dBomb:
+            return enemies.contains { $0.type == .daemon }
+
+        case .antiV:
+            return enemies.contains { $0.type == .virus }
+
+        case .calm:
+            return !scheduledTasksDisabled
+
+        case .delay:
+            return !transmissions.isEmpty
+
+        case .atkPlus:
+            return !atkPlusUsedThisStage && player.attackDamage < 2
+
+        case .row, .col:
+            if type == .row {
+                return enemies.contains { $0.row == player.row }
+            } else {
+                return enemies.contains { $0.col == player.col }
+            }
+
+        case .debug:
+            return enemies.contains { enemy in
+                grid.cells[enemy.row][enemy.col].hasBlock
+            }
+
+        case .reduc:
+            for row in 0..<Constants.gridSize {
+                for col in 0..<Constants.gridSize {
+                    let cell = grid.cells[row][col]
+                    if case .block(let blockType) = cell.content, !cell.isSiphoned {
+                        if blockType.transmissionSpawnCount > 0 {
+                            return true
+                        }
+                    }
+                }
+            }
+            return false
+
+        case .score:
+            // Only applicable if not on last stage
+            return currentStage < Constants.totalStages
+
+        case .hack:
+            // Only applicable if there are siphoned cells
+            for row in 0..<Constants.gridSize {
+                for col in 0..<Constants.gridSize {
+                    if grid.cells[row][col].isSiphoned {
+                        return true
+                    }
+                }
+            }
+            return false
+
+        case .undo:
+            return !gameHistory.isEmpty
+
+        case .siphPlus, .wait, .step:
+            // Always applicable
+            return true
+        }
     }
 
     func findAlternativeMove(enemy: Enemy, occupiedTargets: Set<String>, allEnemyPositions: Set<String>) -> (Int, Int)? {

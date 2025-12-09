@@ -103,19 +103,20 @@ class Transmission {
     var row: Int
     var col: Int
     var state: TransmissionState
+    let enemyType: EnemyType  // Store enemy type from creation (for show program)
 
-    init(row: Int, col: Int, turnsUntilSpawn: Int = 1) {
+    init(row: Int, col: Int, turnsUntilSpawn: Int = 1, enemyType: EnemyType? = nil) {
         self.id = UUID()
         self.row = row
         self.col = col
         self.state = .spawning(turnsRemaining: turnsUntilSpawn)
+        self.enemyType = enemyType ?? EnemyType.allCases.randomElement()!
     }
 
     func decrementTimer() -> Enemy? {
         if case .spawning(let turns) = state {
             if turns <= 1 {
-                // Spawn enemy
-                let enemyType = EnemyType.allCases.randomElement()!
+                // Spawn enemy using the predetermined type
                 let enemy = Enemy(type: enemyType, row: row, col: col)
                 enemy.disabledTurns = 1  // Disable for spawn turn
                 state = .spawned(enemy)

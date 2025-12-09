@@ -41,6 +41,7 @@ class Cell {
     var content: CellContent
     var resources: ResourceType
     var isSiphoned: Bool
+    var siphonCenter: Bool  // True if player was on this cell when siphoning
 
     init(row: Int, col: Int) {
         self.row = row
@@ -48,6 +49,7 @@ class Cell {
         self.content = .empty
         self.resources = .none
         self.isSiphoned = false
+        self.siphonCenter = false
     }
 
     var hasBlock: Bool {
