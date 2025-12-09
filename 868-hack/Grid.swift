@@ -16,11 +16,11 @@ enum ResourceType {
 }
 
 enum BlockType {
-    case data(points: Int, enemySpawn: Int)
-    case program(Program, enemySpawn: Int)
-    case question(isData: Bool, points: Int?, program: Program?, enemySpawn: Int)
+    case data(points: Int, transmissionSpawn: Int)
+    case program(Program, transmissionSpawn: Int)
+    case question(isData: Bool, points: Int?, program: Program?, transmissionSpawn: Int)
 
-    var enemySpawnCount: Int {
+    var transmissionSpawnCount: Int {
         switch self {
         case .data(_, let count), .program(_, let count), .question(_, _, _, let count):
             return count
