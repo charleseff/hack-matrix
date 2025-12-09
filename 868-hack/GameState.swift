@@ -12,6 +12,7 @@ class GameState {
     var scheduledTasksDisabled: Bool
     var stepActive: Bool
     var gameHistory: [GameStateSnapshot]
+    var pendingSiphonTransmissions: Int
 
     init() {
         self.grid = Grid()
@@ -24,6 +25,7 @@ class GameState {
         self.scheduledTasksDisabled = false
         self.stepActive = false
         self.gameHistory = []
+        self.pendingSiphonTransmissions = 0
 
         let corners = grid.getCornerPositions()
         let playerCorner = corners.randomElement()!
@@ -302,6 +304,12 @@ class GameState {
 
     // For animated enemy movement - finalize turn after animations complete
     func finalizeAnimatedTurn() {
+        // Spawn any pending transmissions from siphoning
+        if pendingSiphonTransmissions > 0 {
+            spawnRandomTransmissions(count: pendingSiphonTransmissions)
+            pendingSiphonTransmissions = 0
+        }
+
         for enemy in enemies {
             enemy.decrementDisable()
             enemy.isStunned = false
@@ -471,11 +479,11 @@ class GameState {
                 switch blockType {
                 case .data(let points, let transmissionSpawn):
                     player.score += points
-                    spawnRandomTransmissions(count: transmissionSpawn)
+                    pendingSiphonTransmissions += transmissionSpawn
 
                 case .program(let program, let transmissionSpawn):
                     ownedPrograms.insert(program.type)
-                    spawnRandomTransmissions(count: transmissionSpawn)
+                    pendingSiphonTransmissions += transmissionSpawn
 
                 case .question(let isData, let points, let program, let transmissionSpawn):
                     if isData, let pts = points {
@@ -483,7 +491,7 @@ class GameState {
                     } else if let prog = program {
                         ownedPrograms.insert(prog.type)
                     }
-                    spawnRandomTransmissions(count: transmissionSpawn)
+                    pendingSiphonTransmissions += transmissionSpawn
                 }
 
                 // Don't destroy the block - it stays but is marked as siphoned
@@ -506,9 +514,7 @@ class GameState {
         // Consume the data siphon
         player.dataSiphons -= 1
 
-        // Advance turn
-        advanceTurn()
-
+        // Don't advance turn here - let caller handle animated turn flow
         return true
     }
 

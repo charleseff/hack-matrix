@@ -386,12 +386,14 @@ class GameScene: SKScene {
         // Handle siphon action
         if event.keyCode == 1 { // S key
             if gameState.performSiphon() {
+                // Begin animated turn (processes transmissions and scheduled tasks, but not enemy movement)
+                isAnimating = true
+                gameState.beginAnimatedTurn()
                 updateDisplay()
 
-                // Check for game over
-                if gameState.player.health == .dead {
-                    showGameOver()
-                }
+                // Process enemy movement step-by-step with animations
+                enemiesWhoAttacked = Set<UUID>()
+                animateEnemySteps(currentStep: 0)
             }
             return
         }
@@ -441,15 +443,13 @@ class GameScene: SKScene {
                 // Destroy the transmission (1 HP)
                 self.gameState.transmissions.removeAll { $0.id == transmission.id }
 
-                // Advance turn after attack
-                self.gameState.advanceTurn()
+                // Begin animated turn (processes transmissions and scheduled tasks, but not enemy movement)
+                self.gameState.beginAnimatedTurn()
                 self.updateDisplay()
-                self.isAnimating = false
 
-                // Check for game over
-                if self.gameState.player.health == .dead {
-                    self.showGameOver()
-                }
+                // Process enemy movement step-by-step with animations
+                self.enemiesWhoAttacked = Set<UUID>()
+                self.animateEnemySteps(currentStep: 0)
             }
             return
         }
@@ -472,15 +472,13 @@ class GameScene: SKScene {
                     self.gameState.enemies.removeAll { $0.id == target.id }
                 }
 
-                // Advance turn after attack
-                self.gameState.advanceTurn()
+                // Begin animated turn (processes transmissions and scheduled tasks, but not enemy movement)
+                self.gameState.beginAnimatedTurn()
                 self.updateDisplay()
-                self.isAnimating = false
 
-                // Check for game over
-                if self.gameState.player.health == .dead {
-                    self.showGameOver()
-                }
+                // Process enemy movement step-by-step with animations
+                self.enemiesWhoAttacked = Set<UUID>()
+                self.animateEnemySteps(currentStep: 0)
             }
             return
         }
@@ -571,12 +569,12 @@ class GameScene: SKScene {
         animateEnemyAttacks(attackingEnemies: attackingEnemies) { [weak self] in
             guard let self = self else { return }
 
-            // Update display to show new positions
-            self.updateDisplay()
-
-            // Animate enemies to their new positions
+            // Animate enemies to their new positions (don't call updateDisplay yet - it would destroy nodes)
             self.animateEnemyMovements(oldPositions: enemyOldPositions) { [weak self] in
                 guard let self = self else { return }
+
+                // Now update display after animations are complete
+                self.updateDisplay()
 
                 if hasMoreSteps {
                     // Continue to next step
