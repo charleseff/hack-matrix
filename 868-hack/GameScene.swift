@@ -9,11 +9,12 @@ class GameScene: SKScene {
     var isGameOver: Bool = false
     var isAnimating: Bool = false
     var enemiesWhoAttacked: Set<UUID> = []
+    var programButtons: [ProgramType: SKNode] = [:]
 
     override func didMove(to view: SKView) {
         print("GameScene didMove called!")
         print("Scene size: \(size)")
-        backgroundColor = .darkGray
+        backgroundColor = .init(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)  // Darker background
         gameState = GameState()
         print("GameState initialized")
         setupGrid()
@@ -84,23 +85,24 @@ class GameScene: SKScene {
                 // Update cell appearance based on content
                 switch cell.content {
                 case .empty:
-                    cellNode.fillColor = .clear
+                    // Subtle dark fill for empty cells
+                    cellNode.fillColor = .init(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)
                 case .block:
                     if cell.isSiphoned {
-                        // Siphoned blocks are yellow
-                        cellNode.fillColor = .init(red: 0.6, green: 0.5, blue: 0.1, alpha: 1.0)
-                        cellNode.strokeColor = .init(red: 0.8, green: 0.7, blue: 0.3, alpha: 1.0)
+                        // Siphoned blocks are yellow/gold
+                        cellNode.fillColor = .init(red: 0.7, green: 0.6, blue: 0.1, alpha: 1.0)
+                        cellNode.strokeColor = .init(red: 0.9, green: 0.8, blue: 0.3, alpha: 1.0)
                         cellNode.lineWidth = 3
                     } else {
-                        // Unsiphoned blocks are brownish
-                        cellNode.fillColor = .init(red: 0.25, green: 0.2, blue: 0.15, alpha: 1.0)
-                        cellNode.strokeColor = .init(red: 0.4, green: 0.35, blue: 0.25, alpha: 1.0)
+                        // Unsiphoned blocks are bright teal/cyan
+                        cellNode.fillColor = .init(red: 0.1, green: 0.6, blue: 0.6, alpha: 1.0)
+                        cellNode.strokeColor = .init(red: 0.2, green: 0.8, blue: 0.8, alpha: 1.0)
                         cellNode.lineWidth = 3
                     }
                 case .dataSiphon:
-                    cellNode.fillColor = .init(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.3)
+                    cellNode.fillColor = .init(red: 0.2, green: 0.4, blue: 0.6, alpha: 0.5)
                 case .exit:
-                    cellNode.fillColor = .init(red: 0.2, green: 0.6, blue: 0.2, alpha: 0.3)
+                    cellNode.fillColor = .init(red: 0.2, green: 0.7, blue: 0.2, alpha: 0.5)
                 }
 
                 // Add resource icons for non-block cells, or block info for blocks
@@ -195,12 +197,13 @@ class GameScene: SKScene {
                         if !icon.isEmpty {
                             for i in 0..<amount {
                                 let resourceIcon = SKLabelNode(text: icon)
-                                resourceIcon.fontSize = 14
+                                resourceIcon.fontSize = 12  // Smaller (was 14)
+                                resourceIcon.alpha = 0.6    // More subtle/translucent
                                 resourceIcon.verticalAlignmentMode = .top
                                 resourceIcon.horizontalAlignmentMode = .left
                                 // Position in top-left corner, stack vertically
                                 let xOffset: CGFloat = -Constants.cellSize / 2 + 3
-                                let yOffset: CGFloat = Constants.cellSize / 2 - CGFloat(i * 14) - 3
+                                let yOffset: CGFloat = Constants.cellSize / 2 - CGFloat(i * 12) - 3  // Adjust spacing for smaller size
                                 resourceIcon.position = CGPoint(x: xOffset, y: yOffset)
                                 resourceIcon.zPosition = 2
                                 cellNode.addChild(resourceIcon)
@@ -260,6 +263,7 @@ class GameScene: SKScene {
 
         // Update HUD
         updateHUD()
+        updateProgramButtons()
     }
 
     func drawEntity(emoji: String, row: Int, col: Int, id: UUID) {
@@ -332,7 +336,7 @@ class GameScene: SKScene {
         case .credits(let amount):
             return ("💰", amount)
         case .energy(let amount):
-            return ("🔋", amount)
+            return ("💠", amount)  // Blue diamond
         case .none:
             return ("", 0)
         }
@@ -345,13 +349,12 @@ class GameScene: SKScene {
         let hud = SKNode()
         hud.name = "hud"
 
-        // Format owned programs list
+        // Format owned programs list (in acquisition order)
         let programsList: String
         if gameState.ownedPrograms.isEmpty {
             programsList = "None"
         } else {
             programsList = gameState.ownedPrograms
-                .sorted { $0.rawValue < $1.rawValue }
                 .map { $0.displayName }
                 .joined(separator: ", ")
         }
@@ -359,7 +362,7 @@ class GameScene: SKScene {
         let hudText = """
         Stage: \(gameState.currentStage)/\(Constants.totalStages)  Turn: \(gameState.turnCount)
         Health: \(gameState.player.health.emoji)  Score: \(gameState.player.score)
-        💰\(gameState.player.credits)  🔋\(gameState.player.energy)  💎\(gameState.player.dataSiphons)
+        💰\(gameState.player.credits)  💠\(gameState.player.energy)  💎\(gameState.player.dataSiphons)
         Programs: \(programsList)
         Controls: Arrows = Move/Attack  |  S = Siphon (+ pattern)
         """
@@ -375,6 +378,77 @@ class GameScene: SKScene {
 
         hud.addChild(label)
         addChild(hud)
+    }
+
+    func updateProgramButtons() {
+        // Remove old buttons
+        childNode(withName: "programButtons")?.removeFromParent()
+        programButtons.removeAll()
+
+        let buttonsNode = SKNode()
+        buttonsNode.name = "programButtons"
+
+        // Use programs in acquisition order
+        let buttonWidth: CGFloat = 80
+        let buttonHeight: CGFloat = 35
+        let buttonSpacing: CGFloat = 5
+        let startX: CGFloat = 10
+        let startY: CGFloat = size.height - 120 // Below HUD
+
+        for (index, programType) in gameState.ownedPrograms.enumerated() {
+            let program = Program(type: programType)
+            let check = gameState.canExecuteProgram(programType)
+
+            // Calculate position (wrap to new row every 10 buttons)
+            let column = index % 10
+            let row = index / 10
+            let xPos = startX + CGFloat(column) * (buttonWidth + buttonSpacing)
+            let yPos = startY - CGFloat(row) * (buttonHeight + buttonSpacing)
+
+            // Create button background
+            let buttonBg = SKShapeNode(rectOf: CGSize(width: buttonWidth, height: buttonHeight), cornerRadius: 5)
+            buttonBg.position = CGPoint(x: xPos + buttonWidth / 2, y: yPos - buttonHeight / 2)
+
+            if check.canExecute {
+                // Enabled: cyan background
+                buttonBg.fillColor = .init(red: 0.2, green: 0.6, blue: 0.8, alpha: 1.0)
+                buttonBg.strokeColor = .init(red: 0.3, green: 0.8, blue: 1.0, alpha: 1.0)
+            } else {
+                // Disabled: grey background
+                buttonBg.fillColor = .init(red: 0.3, green: 0.3, blue: 0.3, alpha: 1.0)
+                buttonBg.strokeColor = .init(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0)
+            }
+            buttonBg.lineWidth = 2
+
+            // Add program name
+            let nameLabel = SKLabelNode(text: programType.displayName)
+            nameLabel.fontName = "Menlo-Bold"
+            nameLabel.fontSize = 11
+            nameLabel.fontColor = check.canExecute ? .white : .init(white: 0.6, alpha: 1.0)
+            nameLabel.verticalAlignmentMode = .center
+            nameLabel.horizontalAlignmentMode = .center
+            nameLabel.position = CGPoint(x: 0, y: 5)
+            buttonBg.addChild(nameLabel)
+
+            // Add cost
+            let costText = "\(program.cost.credits)💰 \(program.cost.energy)💠"
+            let costLabel = SKLabelNode(text: costText)
+            costLabel.fontName = "Menlo"
+            costLabel.fontSize = 9
+            costLabel.fontColor = check.canExecute ? .init(white: 0.9, alpha: 1.0) : .init(white: 0.5, alpha: 1.0)
+            costLabel.verticalAlignmentMode = .center
+            costLabel.horizontalAlignmentMode = .center
+            costLabel.position = CGPoint(x: 0, y: -10)
+            buttonBg.addChild(costLabel)
+
+            // Store button node for click detection
+            buttonBg.name = "program_\(programType.rawValue)"
+            programButtons[programType] = buttonBg
+
+            buttonsNode.addChild(buttonBg)
+        }
+
+        addChild(buttonsNode)
     }
 
     // MARK: - Animation Functions
@@ -482,6 +556,31 @@ class GameScene: SKScene {
 
         if let dir = direction {
             handlePlayerMove(direction: dir)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        // Block input during animations or game over
+        guard !isAnimating && !isGameOver else { return }
+
+        let location = event.location(in: self)
+        let clickedNodes = nodes(at: location)
+
+        // Check if a program button was clicked
+        for node in clickedNodes {
+            if let nodeName = node.name, nodeName.hasPrefix("program_") {
+                let programName = String(nodeName.dropFirst("program_".count))
+
+                // Find the program type
+                if let programType = ProgramType.allCases.first(where: { $0.rawValue == programName }) {
+                    // Try to execute the program
+                    if gameState.executeProgram(programType) {
+                        // Program executed successfully, update display
+                        updateDisplay()
+                    }
+                }
+                return
+            }
         }
     }
 

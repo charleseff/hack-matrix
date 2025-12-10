@@ -7,7 +7,7 @@ class GameState {
     var transmissions: [Transmission]
     var currentStage: Int
     var turnCount: Int
-    var ownedPrograms: Set<ProgramType>
+    var ownedPrograms: [ProgramType]  // Array to preserve acquisition order
     var cryptogsRevealed: Bool
     var scheduledTasksDisabled: Bool
     var stepActive: Bool
@@ -184,8 +184,21 @@ class GameState {
         for row in 0..<Constants.gridSize {
             for col in 0..<Constants.gridSize {
                 let cell = grid.cells[row][col]
+                // Place resources on empty cells AND data siphon cells
                 if case .empty = cell.content {
                     // Weighted random: 45% chance of 1, 45% chance of 2, 10% chance of 3
+                    let roll = Double.random(in: 0..<1)
+                    let amount: Int
+                    if roll < 0.45 {
+                        amount = 1
+                    } else if roll < 0.9 {
+                        amount = 2
+                    } else {
+                        amount = 3
+                    }
+                    cell.resources = Bool.random() ? .credits(amount) : .energy(amount)
+                } else if case .dataSiphon = cell.content {
+                    // Data siphon cells also get resources
                     let roll = Double.random(in: 0..<1)
                     let amount: Int
                     if roll < 0.45 {
@@ -525,7 +538,9 @@ class GameState {
                     cell.content = .block(.data(points: points, transmissionSpawn: 0))
 
                 case .program(let program, let transmissionSpawn):
-                    ownedPrograms.insert(program.type)
+                    if !ownedPrograms.contains(program.type) {
+                        ownedPrograms.append(program.type)
+                    }
                     pendingSiphonTransmissions += transmissionSpawn
                     // Update block to show 0 transmissions since they're being spawned
                     cell.content = .block(.program(program, transmissionSpawn: 0))
@@ -536,7 +551,9 @@ class GameState {
                         // Reveal the question block as a data block (with 0 transmissions since they're being spawned)
                         cell.content = .block(.data(points: pts, transmissionSpawn: 0))
                     } else if let prog = program {
-                        ownedPrograms.insert(prog.type)
+                        if !ownedPrograms.contains(prog.type) {
+                            ownedPrograms.append(prog.type)
+                        }
                         // Reveal the question block as a program block (with 0 transmissions since they're being spawned)
                         cell.content = .block(.program(prog, transmissionSpawn: 0))
                     }
@@ -694,6 +711,149 @@ class GameState {
             // Always applicable
             return true
         }
+    }
+
+    /// Execute a program's effect
+    /// Returns true if successful, false otherwise
+    func executeProgram(_ type: ProgramType) -> Bool {
+        let check = canExecuteProgram(type)
+        guard check.canExecute else { return false }
+
+        let program = Program(type: type)
+
+        // Deduct resources
+        player.credits -= program.cost.credits
+        player.energy -= program.cost.energy
+
+        // Execute program effect
+        switch type {
+        case .exch:
+            // Convert 4C to 4E
+            player.credits -= 4
+            player.energy += 4
+
+        case .show:
+            // Reveal Cryptogs and transmissions
+            cryptogsRevealed = true
+            transmissionsRevealed = true
+
+        case .siphPlus:
+            // Gain 1 data siphon
+            player.dataSiphons += 1
+
+        case .reset:
+            // Restore to 3HP
+            player.health = .full
+
+        case .calm:
+            // Disable scheduled spawns
+            scheduledTasksDisabled = true
+
+        case .atkPlus:
+            // Increase damage to 2HP
+            player.attackDamage = 2
+            atkPlusUsedThisStage = true
+
+        case .dBomb:
+            // Destroy nearest Daemon and damage/stun surrounding enemies
+            if let nearestDaemon = findNearestEnemy(ofType: .daemon) {
+                let daemonRow = nearestDaemon.row
+                let daemonCol = nearestDaemon.col
+
+                // Remove the daemon
+                enemies.removeAll { $0.id == nearestDaemon.id }
+
+                // Damage and stun enemies in 8 surrounding cells
+                for rowOffset in -1...1 {
+                    for colOffset in -1...1 {
+                        if rowOffset == 0 && colOffset == 0 { continue }
+                        let checkRow = daemonRow + rowOffset
+                        let checkCol = daemonCol + colOffset
+
+                        for enemy in enemies where enemy.row == checkRow && enemy.col == checkCol {
+                            enemy.takeDamage(1)
+                            if enemy.hp > 0 {
+                                enemy.isStunned = true
+                            }
+                        }
+                    }
+                }
+
+                // Remove dead enemies
+                enemies.removeAll { $0.hp <= 0 }
+            }
+
+        case .antiV:
+            // Damage all Viruses and stun survivors
+            for enemy in enemies where enemy.type == .virus {
+                enemy.takeDamage(1)
+                if enemy.hp > 0 {
+                    enemy.isStunned = true
+                }
+            }
+            enemies.removeAll { $0.hp <= 0 }
+
+        case .delay:
+            // Extend transmissions +3 turns
+            for transmission in transmissions {
+                if case .spawning(let turns) = transmission.state {
+                    transmission.state = .spawning(turnsRemaining: turns + 3)
+                }
+            }
+
+        case .poly:
+            // Randomize enemy types (each enemy becomes a DIFFERENT type)
+            for enemy in enemies {
+                let otherTypes = EnemyType.allCases.filter { $0 != enemy.type }
+                let newType = otherTypes.randomElement()!
+                enemy.type = newType
+                enemy.hp = newType.maxHP
+            }
+
+        case .reduc:
+            // Reduce block spawn counts by 1 (minimum 0)
+            for row in 0..<Constants.gridSize {
+                for col in 0..<Constants.gridSize {
+                    let cell = grid.cells[row][col]
+                    if case .block(let blockType) = cell.content, !cell.isSiphoned {
+                        switch blockType {
+                        case .data(let points, let transmissionSpawn):
+                            let newSpawn = max(0, transmissionSpawn - 1)
+                            cell.content = .block(.data(points: points, transmissionSpawn: newSpawn))
+                        case .program(let prog, let transmissionSpawn):
+                            let newSpawn = max(0, transmissionSpawn - 1)
+                            cell.content = .block(.program(prog, transmissionSpawn: newSpawn))
+                        case .question(let isData, let points, let prog, let transmissionSpawn):
+                            let newSpawn = max(0, transmissionSpawn - 1)
+                            cell.content = .block(.question(isData: isData, points: points, program: prog, transmissionSpawn: newSpawn))
+                        }
+                    }
+                }
+            }
+
+        case .score:
+            // Gain points = levels left
+            let levelsLeft = Constants.totalStages - currentStage
+            player.score += levelsLeft
+
+        // TODO: Complex programs need more implementation details
+        case .wait, .step, .push, .pull, .crash, .warp, .row, .col, .debug, .undo, .hack:
+            // These need more complex implementation - skip for now
+            return false
+        }
+
+        return true
+    }
+
+    /// Find nearest enemy of a specific type
+    func findNearestEnemy(ofType type: EnemyType) -> Enemy? {
+        return enemies
+            .filter { $0.type == type }
+            .min { enemy1, enemy2 in
+                let dist1 = abs(enemy1.row - player.row) + abs(enemy1.col - player.col)
+                let dist2 = abs(enemy2.row - player.row) + abs(enemy2.col - player.col)
+                return dist1 < dist2
+            }
     }
 
     func findAlternativeMove(enemy: Enemy, occupiedTargets: Set<String>, allEnemyPositions: Set<String>) -> (Int, Int)? {
