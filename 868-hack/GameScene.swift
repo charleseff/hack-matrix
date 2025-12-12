@@ -15,8 +15,18 @@ class GameScene: SKScene {
         print("GameScene didMove called!")
         print("Scene size: \(size)")
         backgroundColor = .init(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)  // Darker background
-        gameState = GameState()
-        print("GameState initialized")
+
+        // Check for --debug-scenario command-line argument
+        let useDebugScenario = CommandLine.arguments.contains("--debug-scenario")
+
+        if useDebugScenario {
+            gameState = GameState.createDebugScenario()
+            print("Loaded debug scenario")
+        } else {
+            gameState = GameState()
+            print("GameState initialized")
+        }
+
         setupGrid()
         print("Grid setup complete")
         updateDisplay()
@@ -274,13 +284,11 @@ class GameScene: SKScene {
                 transmissionLabel.alpha = 0.5  // Make it translucent so enemy shows through
                 container.addChild(transmissionLabel)
 
-                // Draw enemy emoji (foreground)
-                let enemyLabel = SKLabelNode(text: transmission.enemyType.emoji)
-                enemyLabel.fontSize = 32  // Slightly smaller
-                enemyLabel.verticalAlignmentMode = .center
-                enemyLabel.horizontalAlignmentMode = .center
-                enemyLabel.position = CGPoint(x: 0, y: 0)
-                container.addChild(enemyLabel)
+                // Draw enemy sprite (foreground)
+                let enemySprite = SKSpriteNode(imageNamed: transmission.enemyType.spriteName)
+                enemySprite.size = CGSize(width: Constants.cellSize * 0.6, height: Constants.cellSize * 0.6)
+                enemySprite.position = CGPoint(x: 0, y: 0)
+                container.addChild(enemySprite)
 
                 addChild(container)
                 entityNodes[transmission.id] = container
@@ -315,19 +323,17 @@ class GameScene: SKScene {
         container.position = cellNode.position
         container.zPosition = 10 // On top of cell content
 
-        // Draw emoji
-        let emojiLabel = SKLabelNode(text: enemy.type.emoji)
-        emojiLabel.fontSize = 40
-        emojiLabel.verticalAlignmentMode = .center
-        emojiLabel.horizontalAlignmentMode = .center
-        emojiLabel.position = CGPoint(x: 0, y: 0)
+        // Draw sprite
+        let sprite = SKSpriteNode(imageNamed: enemy.type.spriteName)
+        sprite.size = CGSize(width: Constants.cellSize * 0.8, height: Constants.cellSize * 0.8)
+        sprite.position = CGPoint(x: 0, y: 0)
 
         // Fade if stunned
         if enemy.isStunned {
-            emojiLabel.alpha = 0.4
+            sprite.alpha = 0.4
         }
 
-        container.addChild(emojiLabel)
+        container.addChild(sprite)
 
         // Show HP indicator
         let hpLabel = SKLabelNode(text: "\(enemy.hp)/\(enemy.type.maxHP)")
@@ -1028,6 +1034,13 @@ class GameScene: SKScene {
     func showGameOver() {
         isGameOver = true
 
+        // Save high score (died on current stage)
+        HighScoreManager.shared.addScore(
+            score: gameState.player.score,
+            completed: false,
+            stage: gameState.currentStage
+        )
+
         let gameOverLabel = SKLabelNode(text: "GAME OVER")
         gameOverLabel.fontSize = 48
         gameOverLabel.fontColor = .red
@@ -1042,6 +1055,13 @@ class GameScene: SKScene {
     }
 
     func showVictory() {
+        // Save high score (completed all stages)
+        HighScoreManager.shared.addScore(
+            score: gameState.player.score,
+            completed: true,
+            stage: gameState.currentStage
+        )
+
         let victoryLabel = SKLabelNode(text: "VICTORY! Final Score: \(gameState.player.score)")
         victoryLabel.fontSize = 48
         victoryLabel.fontColor = .green

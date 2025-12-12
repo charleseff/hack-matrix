@@ -32,6 +32,15 @@ enum EnemyType {
         case .cryptog: return "👻"
         }
     }
+
+    var spriteName: String {
+        switch self {
+        case .virus: return "virus_sprite"
+        case .daemon: return "daemon_sprite"
+        case .glitch: return "glitch_sprite"
+        case .cryptog: return "cryptog_sprite"
+        }
+    }
 }
 
 class Enemy {

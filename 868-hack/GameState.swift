@@ -38,6 +38,118 @@ class GameState {
         initializeStage()
     }
 
+    /// Debug initializer to reproduce specific scenarios
+    /// Set useDebugScenario to true to load the debug scenario
+    static func createDebugScenario() -> GameState {
+        let state = GameState()
+
+        // Clear the randomly generated stage
+        state.grid = Grid()
+        state.enemies = []
+        state.transmissions = []
+        state.turnCount = 15
+        state.currentStage = 2
+
+        // Set player position
+        state.player = Player(row: 3, col: 1)
+        state.player.health = .full
+        state.player.score = 5
+        state.player.credits = 2
+        state.player.energy = 6
+        state.player.dataSiphons = 0
+
+        // Add owned programs (example - adjust as needed)
+        state.ownedPrograms = [.col, .row, .warp]
+
+        // Place enemies
+        let virus = Enemy(type: .virus, row: 1, col: 1)
+        virus.hp = 2
+        state.enemies.append(virus)
+
+        let daemon1 = Enemy(type: .daemon, row: 1, col: 4)
+        daemon1.hp = 2
+        state.enemies.append(daemon1)
+        let daemon2 = Enemy(type: .daemon, row: 0, col: 4)
+        daemon2.hp = 2
+        state.enemies.append(daemon2)
+
+        // Setup grid - place blocks and resources based on image
+        // Row 5 (top row, counting from 0)
+        state.grid.cells[5][0].content = .empty
+        state.grid.cells[5][0].resources = .none
+        state.grid.cells[5][1].content = .block(.data(points: 8, transmissionSpawn: 1))
+        state.grid.cells[5][2].content = .block(.data(points: 6, transmissionSpawn: 2))
+        state.grid.cells[5][2].resources = .energy(2)
+        state.grid.cells[5][3].content = .empty
+        state.grid.cells[5][3].resources = .energy(2)
+        state.grid.cells[5][4].content = .empty
+        state.grid.cells[5][4].resources = .credits(1)
+        state.grid.cells[5][5].content = .dataSiphon
+
+        // Row 4
+        state.grid.cells[4][0].content = .empty
+        state.grid.cells[4][0].resources = .energy(2)
+        state.grid.cells[4][1].content = .empty
+        state.grid.cells[4][1].resources = .energy(1)
+        state.grid.cells[4][2].content = .empty
+        state.grid.cells[4][2].resources = .credits(1)
+        state.grid.cells[4][3].content = .block(.data(points: 6, transmissionSpawn: 2))
+        state.grid.cells[4][3].resources = .credits(2)
+        state.grid.cells[4][4].content = .empty
+        state.grid.cells[4][4].resources = .credits(1)
+        state.grid.cells[4][5].content = .block(.data(points: 6, transmissionSpawn: 1))
+
+        // Row 3
+        state.grid.cells[3][0].content = .empty
+        state.grid.cells[3][0].resources = .credits(1)
+        state.grid.cells[3][1].content = .empty // Virus is here
+        state.grid.cells[3][1].resources = .credits(1)
+        state.grid.cells[3][2].content = .empty
+        state.grid.cells[3][2].resources = .energy(2)
+        state.grid.cells[3][3].content = .empty
+        state.grid.cells[3][3].resources = .credits(1)
+        state.grid.cells[3][4].content = .empty
+        state.grid.cells[3][4].resources = .energy(2)
+        state.grid.cells[3][5].content = .empty
+        state.grid.cells[3][5].resources = .energy(2)
+
+        // Row 2
+        state.grid.cells[2][0].content = .block(.data(points: 4, transmissionSpawn: 4))
+        state.grid.cells[2][1].content = .block(.data(points: 1, transmissionSpawn: 2))
+        state.grid.cells[2][2].content = .block(.question(isData: true, points: 2, program: nil, transmissionSpawn: 2))
+        state.grid.cells[2][3].content = .block(.program(Program(type: .warp), transmissionSpawn: 5))
+        state.grid.cells[2][4].content = .empty
+        state.grid.cells[2][4].resources = .energy(2)
+        state.grid.cells[2][5].content = .empty
+        state.grid.cells[2][5].resources = .energy(2)
+
+        // Row 1
+        state.grid.cells[1][0].content = .empty
+        state.grid.cells[1][0].resources = .credits(1)
+        state.grid.cells[1][1].content = .empty // Player is here
+        state.grid.cells[1][1].resources = .credits(1)
+        state.grid.cells[1][1].siphonCenter = true // Player siphoned here
+        state.grid.cells[1][2].content = .empty
+        state.grid.cells[1][2].resources = .credits(1)
+        state.grid.cells[1][3].content = .block(.data(points: 2, transmissionSpawn: 2))
+        state.grid.cells[1][4].content = .empty
+        state.grid.cells[1][4].resources = .credits(1)
+        state.grid.cells[1][5].content = .block(.data(points: 2, transmissionSpawn: 2))
+
+        // Row 0 (bottom row)
+        state.grid.cells[0][0].content = .exit
+        state.grid.cells[0][1].content = .block(.program(Program(type: .row), transmissionSpawn: 2))
+        state.grid.cells[0][2].content = .empty
+        state.grid.cells[0][2].resources = .energy(1)
+        state.grid.cells[0][3].content = .empty
+        state.grid.cells[0][3].resources = .credits(1)
+        state.grid.cells[0][4].content = .empty
+        state.grid.cells[0][4].resources = .credits(2)
+        state.grid.cells[0][5].content = .dataSiphon
+
+        return state
+    }
+
     func initializeStage() {
         // Keep enemies and transmissions (they persist across stages)
         turnCount = 0
