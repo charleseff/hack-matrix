@@ -592,6 +592,45 @@ class GameScene: SKScene {
         }
     }
 
+    // Map keyboard keys to programs for ML-friendly input
+    func getProgramForKeyCode(_ keyCode: UInt16) -> ProgramType? {
+        // Number keys 1-9 (key codes 18-26) -> first 9 programs
+        // Letter keys for remaining programs
+        switch keyCode {
+        // Numbers 1-9
+        case 18: return .push      // 1
+        case 19: return .pull      // 2
+        case 20: return .crash     // 3
+        case 21: return .warp      // 4
+        case 23: return .poly      // 5
+        case 22: return .wait      // 6
+        case 26: return .debug     // 7
+        case 28: return .row       // 8
+        case 25: return .col       // 9
+
+        // Letters q-p (top row)
+        case 12: return .undo      // q
+        case 13: return .step      // w
+        case 14: return .siphPlus  // e
+        case 15: return .exch      // r
+        case 17: return .show      // t
+        case 16: return .reset     // y
+        case 32: return .calm      // u
+        case 34: return .dBomb     // i
+        case 31: return .delay     // o
+        case 35: return .antiV     // p
+
+        // Letters a-l (home row)
+        case 0: return .score      // a
+        // case 1 is 's' for siphon - skip
+        case 2: return .reduc      // d
+        case 3: return .atkPlus    // f
+        case 5: return .hack       // g
+
+        default: return nil
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         // Block input during animations
         guard !isAnimating else { return }
@@ -612,7 +651,7 @@ class GameScene: SKScene {
                 let shouldEnemiesMove = gameState.beginAnimatedTurn()
                 updateDisplay()
 
-                // Process enemy movement step-by-step with animations (if step wasn't used)
+                // Process enemy movement step-by-step with animations (if step isn't used)
                 if shouldEnemiesMove {
                     enemiesWhoAttacked = Set<UUID>()
                     animateEnemySteps(currentStep: 0)
@@ -621,6 +660,49 @@ class GameScene: SKScene {
                     gameState.finalizeAnimatedTurn()
                     isAnimating = false
                 }
+            }
+            return
+        }
+
+        // Check for program keyboard shortcuts
+        if let programType = getProgramForKeyCode(event.keyCode) {
+            print("Attempting to execute program via keyboard: \(programType)")
+            let result = gameState.executeProgram(programType)
+            if result.success {
+                print("Program executed successfully via keyboard")
+
+                // Special handling for wait program - advance turn with enemy movement
+                if programType == .wait {
+                    isAnimating = true
+                    let shouldEnemiesMove = gameState.beginAnimatedTurn()
+                    updateDisplay()
+
+                    if shouldEnemiesMove {
+                        enemiesWhoAttacked = Set<UUID>()
+                        animateEnemySteps(currentStep: 0)
+                    } else {
+                        gameState.finalizeAnimatedTurn()
+                        isAnimating = false
+                    }
+                } else if programType != .undo {
+                    // All other programs except undo advance the turn
+                    isAnimating = true
+                    let shouldEnemiesMove = gameState.beginAnimatedTurn()
+                    updateDisplay()
+
+                    if shouldEnemiesMove {
+                        enemiesWhoAttacked = Set<UUID>()
+                        animateEnemySteps(currentStep: 0)
+                    } else {
+                        gameState.finalizeAnimatedTurn()
+                        isAnimating = false
+                    }
+                } else {
+                    // Undo doesn't advance turn, just update display
+                    updateDisplay()
+                }
+            } else {
+                print("Failed to execute program.")
             }
             return
         }
@@ -718,106 +800,45 @@ class GameScene: SKScene {
     }
 
     func handlePlayerMove(direction: Direction) {
-        // Check for target in line of fire (transmission or enemy, whichever is closer)
-        let targetResult = findTargetInLineOfFire(direction: direction)
+        // Get target info for animation (before game state changes)
+        let targetResult = gameState.findTargetInLineOfFire(direction: direction)
+        let oldPlayerRow = gameState.player.row
+        let oldPlayerCol = gameState.player.col
 
+        // Execute move/attack in game logic
+        let result = gameState.tryMove(direction: direction)
+
+        guard result.success else { return }
+
+        // Handle animations based on what happened
         if let transmission = targetResult.transmission {
-            // Animate attack
+            // Animate attack on transmission
             isAnimating = true
-            animateAttack(fromRow: gameState.player.row, fromCol: gameState.player.col,
+            animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
                          toRow: transmission.row, toCol: transmission.col) { [weak self] in
-                guard let self = self else { return }
-
-                // Destroy the transmission (1 HP)
-                self.gameState.transmissions.removeAll { $0.id == transmission.id }
-
-                // Begin animated turn (processes transmissions and scheduled tasks, but not enemy movement)
-                let shouldEnemiesMove = self.gameState.beginAnimatedTurn()
-                self.updateDisplay()
-
-                // Process enemy movement step-by-step with animations (if step wasn't used)
-                if shouldEnemiesMove {
-                    self.enemiesWhoAttacked = Set<UUID>()
-                    self.animateEnemySteps(currentStep: 0)
-                } else {
-                    // Skip enemy movement, just finalize turn
-                    self.gameState.finalizeAnimatedTurn()
-                    self.isAnimating = false
-                }
+                self?.handlePlayerMoveComplete()
             }
-            return
-        }
-
-        if let target = targetResult.enemy {
-            // Animate attack
+        } else if let enemy = targetResult.enemy {
+            // Animate attack on enemy
             isAnimating = true
-            animateAttack(fromRow: gameState.player.row, fromCol: gameState.player.col,
-                         toRow: target.row, toCol: target.col) { [weak self] in
-                guard let self = self else { return }
-
-                // Attack the enemy
-                target.takeDamage(self.gameState.player.attackDamage)
-
-                // Stun the enemy if it survives
-                if target.hp > 0 {
-                    target.isStunned = true
-                } else {
-                    // Remove dead enemy
-                    self.gameState.enemies.removeAll { $0.id == target.id }
-                }
-
-                // Begin animated turn (processes transmissions and scheduled tasks, but not enemy movement)
-                let shouldEnemiesMove = self.gameState.beginAnimatedTurn()
-                self.updateDisplay()
-
-                // Process enemy movement step-by-step with animations (if step wasn't used)
-                if shouldEnemiesMove {
-                    self.enemiesWhoAttacked = Set<UUID>()
-                    self.animateEnemySteps(currentStep: 0)
-                } else {
-                    // Skip enemy movement, just finalize turn
-                    self.gameState.finalizeAnimatedTurn()
-                    self.isAnimating = false
-                }
+            animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
+                         toRow: enemy.row, toCol: enemy.col) { [weak self] in
+                self?.handlePlayerMoveComplete()
             }
-            return
-        }
-
-        // No enemy to attack, try to move
-        let offset = direction.offset
-        let newRow = gameState.player.row + offset.row
-        let newCol = gameState.player.col + offset.col
-
-        if gameState.player.canMoveTo(row: newRow, col: newCol, grid: gameState.grid) {
-            let oldRow = gameState.player.row
-            let oldCol = gameState.player.col
-
-            gameState.player.row = newRow
-            gameState.player.col = newCol
-
-            // Collect resources/siphons
-            let cell = gameState.grid.cells[newRow][newCol]
-            if cell.hasDataSiphon {
-                gameState.player.dataSiphons += 1
-                cell.content = .empty
-            }
-
-            // Check for exit
-            if cell.isExit {
-                advanceToNextStage()
-                return
-            }
-
-            // Animate player movement
+        } else if result.exitReached {
+            // Player reached exit - advance stage
+            advanceToNextStage()
+        } else {
+            // Player moved - animate movement
             isAnimating = true
             updateDisplay() // Redraw everything at new positions
 
             // Find and animate player node
             if let playerNode = findPlayerNode() {
-                let fromPos = getCellPosition(row: oldRow, col: oldCol)
+                let fromPos = getCellPosition(row: oldPlayerRow, col: oldPlayerCol)
                 playerNode.position = fromPos
 
-                let moveAction = SKAction.move(to: getCellPosition(row: newRow, col: newCol), duration: 0.15)
+                let moveAction = SKAction.move(to: getCellPosition(row: gameState.player.row, col: gameState.player.col), duration: 0.15)
                 moveAction.timingMode = .easeInEaseOut
 
                 playerNode.run(moveAction) { [weak self] in
@@ -956,78 +977,13 @@ class GameScene: SKScene {
     }
 
     func advanceToNextStage() {
-        // Gain 1 HP (up to max of 3)
-        if gameState.player.health.rawValue < 3 {
-            gameState.player.health = PlayerHealth(rawValue: gameState.player.health.rawValue + 1) ?? .full
-        }
+        // Use game logic in GameState
+        let gameContinues = gameState.completeStage()
 
-        if gameState.currentStage < Constants.totalStages {
-            gameState.currentStage += 1
-            gameState.initializeStage()
+        if gameContinues {
             updateDisplay()
         } else {
             showVictory()
-        }
-    }
-
-    func findTargetInLineOfFire(direction: Direction) -> (transmission: Transmission?, enemy: Enemy?) {
-        let offset = direction.offset
-        var currentRow = gameState.player.row
-        var currentCol = gameState.player.col
-
-        // Move in the direction until we hit something
-        while true {
-            currentRow += offset.row
-            currentCol += offset.col
-
-            // Check bounds
-            guard currentRow >= 0 && currentRow < Constants.gridSize &&
-                  currentCol >= 0 && currentCol < Constants.gridSize else {
-                return (nil, nil)
-            }
-
-            // Check for transmission first (same priority as enemy - first one hit)
-            if let transmission = gameState.transmissions.first(where: { $0.row == currentRow && $0.col == currentCol }) {
-                return (transmission, nil)
-            }
-
-            // Check for enemy
-            if let enemy = gameState.enemies.first(where: { $0.row == currentRow && $0.col == currentCol }) {
-                return (nil, enemy)
-            }
-
-            // If no target, check for block (blocks line of fire)
-            if gameState.grid.cells[currentRow][currentCol].hasBlock {
-                return (nil, nil)
-            }
-        }
-    }
-
-    func findEnemyInLineOfFire(direction: Direction) -> Enemy? {
-        let offset = direction.offset
-        var currentRow = gameState.player.row
-        var currentCol = gameState.player.col
-
-        // Move in the direction until we hit something
-        while true {
-            currentRow += offset.row
-            currentCol += offset.col
-
-            // Check bounds
-            guard currentRow >= 0 && currentRow < Constants.gridSize &&
-                  currentCol >= 0 && currentCol < Constants.gridSize else {
-                return nil
-            }
-
-            // Check for enemy first (even if on a block)
-            if let enemy = gameState.enemies.first(where: { $0.row == currentRow && $0.col == currentCol }) {
-                return enemy
-            }
-
-            // If no enemy, check for block (blocks line of fire)
-            if gameState.grid.cells[currentRow][currentCol].hasBlock {
-                return nil
-            }
         }
     }
 

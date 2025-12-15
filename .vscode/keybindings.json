@@ -1,0 +1,12 @@
+[
+  {
+    "key": "cmd+shift+\\",
+    "command": "runCommands",
+    "args": {
+      "commands": [
+        "workbench.action.toggleSidebarVisibility",
+        "workbench.action.togglePanel"
+      ]
+    }
+  }
+]

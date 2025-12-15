@@ -9,6 +9,11 @@
 			<key>orderHint</key>
 			<integer>3</integer>
 		</dict>
+		<key>--headless-test.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>4</integer>
+		</dict>
 		<key>868-hack.xcscheme_^#shared#^_</key>
 		<dict>
 			<key>orderHint</key>
@@ -30,7 +35,7 @@
 		<key>561CF5092EE78EA70074CD5A</key>
 		<dict>
 			<key>primary</key>
-			<true/>
+			<true />
 		</dict>
 	</dict>
 </dict>

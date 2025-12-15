@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build 868-hack",
+      "type": "shell",
+      "command": "xcodebuild",
+      "args": [
+        "-project", "${workspaceFolder}/868-hack.xcodeproj",
+        "-scheme", "868-hack",
+        "-configuration", "Debug",
+        "-derivedDataPath", "${workspaceFolder}/DerivedData",
+        "build"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Run GUI",
+      "type": "shell",
+      "command": "open",
+      "args": ["${workspaceFolder}/DerivedData/868-hack/Build/Products/Debug/868-hack.app"],
+      "dependsOn": "Build 868-hack",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never"
+      }
+    }
+  ]
+}

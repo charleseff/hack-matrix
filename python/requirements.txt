@@ -1,0 +1,12 @@
+# Core RL dependencies
+gymnasium>=0.29.0
+numpy>=1.24.0
+
+# For training with PPO
+stable-baselines3>=2.0.0
+sb3-contrib>=2.0.0
+torch>=2.0.0
+
+# For visualization and monitoring
+tensorboard>=2.14.0
+matplotlib>=3.7.0

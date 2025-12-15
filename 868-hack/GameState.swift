@@ -1446,6 +1446,112 @@ class GameState {
 
         return candidates.min(by: { $0.dist < $1.dist })?.pos
     }
+
+    // MARK: - Player Action Methods (Pure Game Logic)
+
+    /// Find target (transmission or enemy) in line of fire
+    /// Returns the closest target, preferring transmissions over enemies if at same distance
+    func findTargetInLineOfFire(direction: Direction) -> (transmission: Transmission?, enemy: Enemy?) {
+        let offset = direction.offset
+        var currentRow = player.row
+        var currentCol = player.col
+
+        while true {
+            currentRow += offset.row
+            currentCol += offset.col
+
+            // Check bounds
+            guard currentRow >= 0 && currentRow < Constants.gridSize &&
+                  currentCol >= 0 && currentCol < Constants.gridSize else {
+                return (nil, nil)
+            }
+
+            // Check for transmission first (same priority as enemy - first one hit)
+            if let transmission = transmissions.first(where: { $0.row == currentRow && $0.col == currentCol }) {
+                return (transmission, nil)
+            }
+
+            // Check for enemy
+            if let enemy = enemies.first(where: { $0.row == currentRow && $0.col == currentCol }) {
+                return (nil, enemy)
+            }
+
+            // If no target, check for block (blocks line of fire)
+            if grid.cells[currentRow][currentCol].hasBlock {
+                return (nil, nil)
+            }
+        }
+    }
+
+    /// Try to move player in direction, or attack if target in line of fire
+    /// Returns (success: Bool, exitReached: Bool, targetDestroyed: Bool)
+    func tryMove(direction: Direction) -> (success: Bool, exitReached: Bool, targetDestroyed: Bool) {
+        // Check for transmission in line of fire
+        let targetResult = findTargetInLineOfFire(direction: direction)
+
+        if let transmission = targetResult.transmission {
+            // Destroy the transmission (1 HP)
+            transmissions.removeAll { $0.id == transmission.id }
+            return (true, false, true)
+        }
+
+        if let enemy = targetResult.enemy {
+            // Attack the enemy
+            enemy.takeDamage(player.attackDamage)
+
+            // Stun the enemy if it survives
+            if enemy.hp > 0 {
+                enemy.isStunned = true
+            } else {
+                // Remove dead enemy
+                enemies.removeAll { $0.id == enemy.id }
+            }
+            return (true, false, true)
+        }
+
+        // No target to attack, try to move
+        let offset = direction.offset
+        let newRow = player.row + offset.row
+        let newCol = player.col + offset.col
+
+        if player.canMoveTo(row: newRow, col: newCol, grid: grid) {
+            player.row = newRow
+            player.col = newCol
+
+            // Collect resources/siphons
+            let cell = grid.cells[newRow][newCol]
+            if cell.hasDataSiphon {
+                player.dataSiphons += 1
+                cell.content = .empty
+            }
+
+            // Check for exit
+            if cell.isExit {
+                return (true, true, false)
+            }
+
+            return (true, false, false)
+        }
+
+        return (false, false, false)
+    }
+
+    /// Complete current stage and advance to next (or mark victory)
+    /// Returns true if game continues, false if victory achieved
+    func completeStage() -> Bool {
+        // Gain 1 HP (up to max of 3)
+        if player.health.rawValue < 3 {
+            player.health = PlayerHealth(rawValue: player.health.rawValue + 1) ?? .full
+        }
+
+        if currentStage < Constants.totalStages {
+            currentStage += 1
+            initializeStage()
+            return true  // Game continues
+        } else {
+            return false  // Victory!
+        }
+    }
 }
 
 struct GameStateSnapshot {

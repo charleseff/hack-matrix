@@ -1,1 +1,16 @@
 .idea
+.env
+.mcp.json
+
+# Xcode build artifacts
+DerivedData/
+.build/
+
+# Python
+python/venv/
+python/__pycache__/
+*.pyc
+
+# ML training artifacts
+python/logs/
+python/models/

@@ -1,0 +1,14 @@
+{
+  "sourcekit-lsp.serverPath": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/sourcekit-lsp",
+  "sourcekit-lsp.toolchainPath": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain",
+  "files.associations": {
+    "*.swift": "swift"
+  },
+  "search.exclude": {
+    "**/DerivedData": true,
+    "**/.build": true
+  },
+  "editor.gotoLocation.multipleDefinitions": "goto",
+  "editor.gotoLocation.multipleDeclarations": "goto",
+  "editor.gotoLocation.multipleImplementations": "goto"
+}

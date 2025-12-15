@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Headless CLI",
+      "program": "${workspaceFolder}/DerivedData/868-hack/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack",
+      "args": ["--headless-cli"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build 868-hack"
+    }
+  ]
+}
