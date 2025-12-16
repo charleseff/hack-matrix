@@ -15,12 +15,12 @@
     {
       "type": "swift",
       "request": "launch",
+      "name": "Debug 868-hack",
       "args": [],
       "cwd": "${workspaceFolder:868-hack-2}",
-      "name": "Debug 868-hack",
+      "preLaunchTask": "swift: Build Debug 868-hack",
       "target": "868-hack",
-      "configuration": "debug",
-      "preLaunchTask": "swift: Build Debug 868-hack"
+      "configuration": "debug"
     },
     {
       "type": "swift",
