@@ -643,19 +643,7 @@ class GameScene: SKScene {
 
             // Special handling for wait program - advance turn with enemy movement
             if programType == .wait {
-                isAnimating = true
-                let shouldEnemiesMove = gameState.beginAnimatedTurn()
-                updateDisplay()
-
-                // Process enemy movement step-by-step with animations (if step wasn't used)
-                if shouldEnemiesMove {
-                    enemiesWhoAttacked = Set<UUID>()
-                    animateEnemySteps(currentStep: 0)
-                } else {
-                    // Skip enemy movement, just finalize turn
-                    gameState.finalizeAnimatedTurn()
-                    isAnimating = false
-                }
+                executeEnemyTurnWithAnimation()
             }
             // Show explosion animations if there are affected positions
             else if !result.affectedPositions.isEmpty {
@@ -688,7 +676,7 @@ override func keyDown(with event: NSEvent) {
         // Handle siphon action
         if event.keyCode == 1 { // S key
             if gameState.performSiphon() {
-                executeTurnWithAnimation()
+                executeEnemyTurnWithAnimation()
             }
             return
         }
@@ -775,14 +763,14 @@ override func mouseDown(with event: NSEvent) {
             isAnimating = true
             animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
                          toRow: transmission.row, toCol: transmission.col) { [weak self] in
-                self?.handlePlayerMoveComplete()
+                self?.executeEnemyTurnWithAnimation()
             }
         } else if let enemy = targetResult.enemy {
             // Animate attack on enemy
             isAnimating = true
             animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
                          toRow: enemy.row, toCol: enemy.col) { [weak self] in
-                self?.handlePlayerMoveComplete()
+                self?.executeEnemyTurnWithAnimation()
             }
         } else if result.exitReached {
             // Player reached exit - advance stage
@@ -801,11 +789,11 @@ override func mouseDown(with event: NSEvent) {
                 moveAction.timingMode = .easeInEaseOut
 
                 playerNode.run(moveAction) { [weak self] in
-                    self?.handlePlayerMoveComplete()
+                    self?.executeEnemyTurnWithAnimation()
                 }
             } else {
                 // No animation needed, proceed immediately
-                handlePlayerMoveComplete()
+                executeEnemyTurnWithAnimation()
             }
         }
     }
@@ -814,22 +802,6 @@ override func mouseDown(with event: NSEvent) {
         let playerPos = getCellPosition(row: gameState.player.row, col: gameState.player.col)
         return entityNodes.values.first { node in
             abs(node.position.x - playerPos.x) < 1 && abs(node.position.y - playerPos.y) < 1
-        }
-    }
-
-    func handlePlayerMoveComplete() {
-        // Begin turn (processes transmissions and scheduled tasks, but not enemy movement)
-        let shouldEnemiesMove = gameState.beginAnimatedTurn()
-        updateDisplay()
-
-        // Process enemy movement step-by-step with animations (if step wasn't used)
-        if shouldEnemiesMove {
-            enemiesWhoAttacked = Set<UUID>()
-            animateEnemySteps(currentStep: 0)
-        } else {
-            // Skip enemy movement, just finalize turn
-            gameState.finalizeAnimatedTurn()
-            isAnimating = false
         }
     }
 
@@ -867,7 +839,7 @@ override func mouseDown(with event: NSEvent) {
                     self.animateEnemySteps(currentStep: currentStep + 1)
                 } else {
                     // All steps complete, finalize turn
-                    self.gameState.finalizeAnimatedTurn()
+                    self.gameState.finalizeAnimatedEnemyTurn()
                     self.updateDisplay()
                     self.isAnimating = false
 
@@ -935,17 +907,17 @@ override func mouseDown(with event: NSEvent) {
         }
     }
 
-    /// Execute turn with animation (extracted to remove duplication)
-    func executeTurnWithAnimation() {
+    /// Execute enemy turn with animation (extracted to remove duplication)
+    func executeEnemyTurnWithAnimation() {
         isAnimating = true
-        let shouldEnemiesMove = gameState.beginAnimatedTurn()
+        let shouldEnemiesMove = gameState.beginAnimatedEnemyTurn()
         updateDisplay()
 
         if shouldEnemiesMove {
             enemiesWhoAttacked = Set<UUID>()
             animateEnemySteps(currentStep: 0)
         } else {
-            gameState.finalizeAnimatedTurn()
+            gameState.finalizeAnimatedEnemyTurn()
             isAnimating = false
         }
     }

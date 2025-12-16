@@ -52,8 +52,8 @@ class GameState {
         state.player = Player(row: 3, col: 1)
         state.player.health = .full
         state.player.score = 5
-        state.player.credits = 2
-        state.player.energy = 6
+        state.player.credits = 12
+        state.player.energy = 16
         state.player.dataSiphons = 0
 
         // Add owned programs (example - adjust as needed)
@@ -445,7 +445,7 @@ class GameState {
         }
     }
 
-    func processScheduledTask() {
+    func maybeExecuteScheduledTask() {
         guard !scheduledTasksDisabled else { return }
 
         let interval = Constants.scheduledTaskIntervals[currentStage - 1]
@@ -454,26 +454,9 @@ class GameState {
         }
     }
 
-    func advanceTurn() {
-        turnCount += 1
-
-        if !stepActive {
-            processTransmissions()
-            processEnemyTurn()
-        }
-
-        stepActive = false
-        processScheduledTask()
-
-        for enemy in enemies {
-            enemy.decrementDisable()
-            enemy.isStunned = false
-        }
-    }
-
     // For animated enemy movement - start turn without processing enemies
     // Returns true if enemies should move this turn
-    func beginAnimatedTurn() -> Bool {
+    func beginAnimatedEnemyTurn() -> Bool {
         turnCount += 1
 
         let shouldEnemiesMove = !stepActive
@@ -484,13 +467,13 @@ class GameState {
         }
 
         stepActive = false
-        processScheduledTask()
+        maybeExecuteScheduledTask()
 
         return shouldEnemiesMove
     }
 
     // For animated enemy movement - finalize turn after animations complete
-    func finalizeAnimatedTurn() {
+    func finalizeAnimatedEnemyTurn() {
         // Spawn any pending transmissions from siphoning
         if pendingSiphonTransmissions > 0 {
             spawnRandomTransmissions(count: pendingSiphonTransmissions)
@@ -557,30 +540,6 @@ class GameState {
         let rowDiff = abs(enemy.row - player.row)
         let colDiff = abs(enemy.col - player.col)
         return (rowDiff == 1 && colDiff == 0) || (rowDiff == 0 && colDiff == 1)
-    }
-
-    func processEnemyTurn() {
-        // Track which enemies have attacked (they get no more actions)
-        var enemiesWhoAttacked = Set<UUID>()
-
-        let maxSteps = enemies.map { $0.type.moveSpeed }.max() ?? 1
-
-        for step in 0..<maxSteps {
-            // First check for attacks this step
-            for enemy in enemies {
-                guard !enemy.isDisabled && !enemy.isStunned else { continue }
-                guard !enemiesWhoAttacked.contains(enemy.id) else { continue }
-                guard step < enemy.type.moveSpeed else { continue }
-
-                if isAdjacentToPlayer(enemy) {
-                    player.health.takeDamage()
-                    enemiesWhoAttacked.insert(enemy.id)
-                }
-            }
-
-            // Then move enemies who didn't attack
-            moveEnemiesSimultaneously(step: step, enemiesWhoAttacked: enemiesWhoAttacked)
-        }
     }
 
     func getOccupiedPositions(for movingEnemy: Enemy?) -> Set<String> {
