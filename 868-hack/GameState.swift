@@ -457,19 +457,18 @@ class GameState {
     // For animated enemy movement - start turn without processing enemies
     // Returns true if enemies should move this turn
     func beginAnimatedEnemyTurn() -> Bool {
-        turnCount += 1
-
-        let shouldEnemiesMove = !stepActive
-
-        if shouldEnemiesMove {
-            processTransmissions()
-            // Don't process enemy turn here - will be done step-by-step with animations
+        guard !stepActive else {
+            // Step program: free action, no enemy turn, no turn counter advance
+            stepActive = false
+            return false
         }
 
-        stepActive = false
+        // Normal turn: advance counter, enemies move
+        turnCount += 1
+        processTransmissions()
         maybeExecuteScheduledTask()
 
-        return shouldEnemiesMove
+        return true
     }
 
     // For animated enemy movement - finalize turn after animations complete
@@ -490,7 +489,7 @@ class GameState {
     }
 
     // For animated enemy movement - processes one step at a time
-    func processEnemyStep(step: Int, enemiesWhoAttacked: inout Set<UUID>) -> Bool {
+    func executeEnemyStep(step: Int, enemiesWhoAttacked: inout Set<UUID>) -> Bool {
         let maxSteps = enemies.map { $0.type.moveSpeed }.max() ?? 1
 
         guard step < maxSteps else { return false }

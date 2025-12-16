@@ -805,7 +805,7 @@ override func mouseDown(with event: NSEvent) {
         }
     }
 
-    func animateEnemySteps(currentStep: Int) {
+    func executeAndAnimateEnemyStep(currentStep: Int) {
         // Capture positions before this step
         var enemyOldPositions: [UUID: (row: Int, col: Int)] = [:]
         for enemy in gameState.enemies {
@@ -821,7 +821,7 @@ override func mouseDown(with event: NSEvent) {
         }
 
         // Process this step (enemies move and attack)
-        let hasMoreSteps = gameState.processEnemyStep(step: currentStep, enemiesWhoAttacked: &enemiesWhoAttacked)
+        let hasMoreSteps = gameState.executeEnemyStep(step: currentStep, enemiesWhoAttacked: &enemiesWhoAttacked)
 
         // Animate enemy attacks first, then movements
         animateEnemyAttacks(attackingEnemies: attackingEnemies) { [weak self] in
@@ -836,7 +836,7 @@ override func mouseDown(with event: NSEvent) {
 
                 if hasMoreSteps {
                     // Continue to next step
-                    self.animateEnemySteps(currentStep: currentStep + 1)
+                    self.executeAndAnimateEnemyStep(currentStep: currentStep + 1)
                 } else {
                     // All steps complete, finalize turn
                     self.gameState.finalizeAnimatedEnemyTurn()
@@ -915,7 +915,7 @@ override func mouseDown(with event: NSEvent) {
 
         if shouldEnemiesMove {
             enemiesWhoAttacked = Set<UUID>()
-            animateEnemySteps(currentStep: 0)
+            executeAndAnimateEnemyStep(currentStep: 0)
         } else {
             gameState.finalizeAnimatedEnemyTurn()
             isAnimating = false

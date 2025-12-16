@@ -1,5 +1,11 @@
 # 868-HACK Game Architecture
 
+## Project Conventions
+
+- **Plan files** go in `plans/` directory
+
+---
+
 ## Turn Structure
 
 ### Player's Turn
