@@ -23,15 +23,14 @@ class HeadlessGame {
         var info: [String: Any] = [:]
 
         // Process action (handles player action + enemy turn)
-        let result = gameState.processAction(action)
+        let result = gameState.tryExecuteAction(action)
 
         if !result.success {
             info["invalid_action"] = true
         }
 
-        if result.exitReached {
-            let continues = gameState.completeStage()
-            isDone = !continues
+        if result.stageAdvanced {
+            isDone = result.gameWon
             info["stage_complete"] = true
         }
 

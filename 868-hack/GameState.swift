@@ -903,37 +903,59 @@ class GameState {
         let attacks: [(enemyId: UUID, damage: Int)]
     }
 
+    /// Player action data (for animation)
+    struct PlayerActionResult {
+        let fromRow: Int
+        let fromCol: Int
+        let movedTo: (row: Int, col: Int)?      // set if player moved
+        let attackedTarget: (row: Int, col: Int)?  // set if player attacked
+    }
+
     /// Result of processing any game action
     struct ActionResult {
         let success: Bool
         let exitReached: Bool
+        let stageAdvanced: Bool  // stage was completed
+        let gameWon: Bool        // player beat final stage
         let playerDied: Bool
+        let playerAction: PlayerActionResult?  // nil if action failed
         let affectedPositions: [(row: Int, col: Int)]  // for explosion animations
         let enemySteps: [EnemyStepResult]  // for enemy movement animations
 
         static let failed = ActionResult(
             success: false,
             exitReached: false,
+            stageAdvanced: false,
+            gameWon: false,
             playerDied: false,
+            playerAction: nil,
             affectedPositions: [],
             enemySteps: []
         )
     }
 
-    /// Process a game action - single entry point for all action processing
+    /// Execute a game action - single entry point for all action processing
     /// Runs player action AND enemy turn (if applicable), returns all data for animation
-    func processAction(_ action: GameAction) -> ActionResult {
+    func tryExecuteAction(_ action: GameAction) -> ActionResult {
+        // Capture player position before action
+        let fromRow = player.row
+        let fromCol = player.col
+
         var success = true
         var exitReached = false
         var affectedPositions: [(row: Int, col: Int)] = []
         var shouldRunEnemyTurn = false
+        var movedTo: (row: Int, col: Int)? = nil
+        var attackedTarget: (row: Int, col: Int)? = nil
 
         // 1. Handle player action
         switch action {
         case .direction(let direction):
-            let result = tryMove(direction: direction)
+            let result = tryAttackOrMove(direction: direction)
             success = result.success
             exitReached = result.exitReached
+            movedTo = result.movedTo
+            attackedTarget = result.attackedTarget
             shouldRunEnemyTurn = success && !exitReached
 
         case .siphon:
@@ -952,17 +974,37 @@ class GameState {
             return .failed
         }
 
-        // 2. Run enemy turn if needed
+        // Build player action result for animation
+        let playerAction = PlayerActionResult(
+            fromRow: fromRow,
+            fromCol: fromCol,
+            movedTo: movedTo,
+            attackedTarget: attackedTarget
+        )
+
+        // 2. Handle stage completion if exit reached
+        var stageAdvanced = false
+        var gameWon = false
+        if exitReached {
+            let gameContinues = completeStage()
+            stageAdvanced = true
+            gameWon = !gameContinues
+        }
+
+        // 3. Run enemy turn if needed (not if exit reached)
         var enemySteps: [EnemyStepResult] = []
         if shouldRunEnemyTurn {
             enemySteps = runEnemyTurn()
         }
 
-        // 3. Return everything
+        // 4. Return everything
         return ActionResult(
             success: true,
             exitReached: exitReached,
+            stageAdvanced: stageAdvanced,
+            gameWon: gameWon,
             playerDied: player.health == .dead,
+            playerAction: playerAction,
             affectedPositions: affectedPositions,
             enemySteps: enemySteps
         )
@@ -1632,19 +1674,20 @@ class GameState {
     }
 
     /// Try to move player in direction, or attack if target in line of fire
-    /// Returns (success: Bool, exitReached: Bool, targetDestroyed: Bool)
-    func tryMove(direction: Direction) -> (success: Bool, exitReached: Bool, targetDestroyed: Bool) {
+    func tryAttackOrMove(direction: Direction) -> (success: Bool, exitReached: Bool, movedTo: (row: Int, col: Int)?, attackedTarget: (row: Int, col: Int)?) {
         // Check for transmission in line of fire
         let targetResult = findTargetInLineOfFire(direction: direction)
 
         if let transmission = targetResult.transmission {
             // Destroy the transmission (1 HP)
+            let targetPos = (transmission.row, transmission.col)
             transmissions.removeAll { $0.id == transmission.id }
-            return (true, false, true)
+            return (true, false, nil, targetPos)
         }
 
         if let enemy = targetResult.enemy {
             // Attack the enemy
+            let targetPos = (enemy.row, enemy.col)
             enemy.takeDamage(player.attackDamage)
 
             // Stun the enemy if it survives
@@ -1654,7 +1697,7 @@ class GameState {
                 // Remove dead enemy
                 enemies.removeAll { $0.id == enemy.id }
             }
-            return (true, false, true)
+            return (true, false, nil, targetPos)
         }
 
         // No target to attack, try to move
@@ -1673,15 +1716,17 @@ class GameState {
                 cell.content = .empty
             }
 
+            let movedTo = (newRow, newCol)
+
             // Check for exit
             if cell.isExit {
-                return (true, true, false)
+                return (true, true, movedTo, nil)
             }
 
-            return (true, false, false)
+            return (true, false, movedTo, nil)
         }
 
-        return (false, false, false)
+        return (false, false, nil, nil)
     }
 
     /// Complete current stage and advance to next (or mark victory)

@@ -8,7 +8,6 @@ class GameScene: SKScene {
     var cellContentNodes: [SKNode] = []
     var isGameOver: Bool = false
     var isAnimating: Bool = false
-    var enemiesWhoAttacked: Set<UUID> = []
     var programButtons: [ProgramType: SKNode] = [:]
 
     override func didMove(to view: SKView) {
@@ -633,36 +632,7 @@ class GameScene: SKScene {
         default: return nil
         }
     }
-
-    func attemptToExecuteProgram(_ programType: ProgramType) {
-        print("Executing program: \(programType)")
-        // Try to execute the program
-        let result = gameState.executeProgram(programType)
-        if result.success {
-            print("Program executed successfully")
-
-            // Special handling for wait program - advance turn with enemy movement
-            if programType == .wait {
-                executeEnemyTurnWithAnimation()
-            }
-            // Show explosion animations if there are affected positions
-            else if !result.affectedPositions.isEmpty {
-                isAnimating = true
-                animateExplosions(at: result.affectedPositions) { [weak self] in
-                    self?.updateDisplay()
-                    self?.isAnimating = false
-                }
-            } else {
-                // No animations needed, just update display
-                updateDisplay()
-            }
-        } else {
-            print("Program execution failed")
-        }
-    }
-
 override func keyDown(with event: NSEvent) {
-        // Block input during animations
         guard !isAnimating else { return }
 
         // Handle restart
@@ -671,41 +641,31 @@ override func keyDown(with event: NSEvent) {
             return
         }
 
-        guard gameState.player.health != .dead else { return }
-
         // Handle siphon action
         if event.keyCode == 1 { // S key
-            if gameState.performSiphon() {
-                executeEnemyTurnWithAnimation()
-            }
+            tryExecuteActionAndAnimate(.siphon)
             return
         }
 
         // Check for program keyboard shortcuts
         if let programType = getProgramForKeyCode(event.keyCode) {
-            attemptToExecuteProgram(programType)
+            tryExecuteActionAndAnimate(.program(programType))
             return
         }
 
-        var direction: Direction?
-
+        // Check for direction keys
         switch event.keyCode {
-        case 126: direction = .up      // Arrow up
-        case 125: direction = .down    // Arrow down
-        case 123: direction = .left    // Arrow left
-        case 124: direction = .right   // Arrow right
+        case 126: tryExecuteActionAndAnimate(.direction(.up))
+        case 125: tryExecuteActionAndAnimate(.direction(.down))
+        case 123: tryExecuteActionAndAnimate(.direction(.left))
+        case 124: tryExecuteActionAndAnimate(.direction(.right))
         default: break
-        }
-
-        if let dir = direction {
-            handlePlayerMove(direction: dir)
         }
     }
 
 
 
 override func mouseDown(with event: NSEvent) {
-        // Block input during animations or game over
         guard !isAnimating && !isGameOver else { return }
 
         let location = event.location(in: self)
@@ -718,10 +678,8 @@ override func mouseDown(with event: NSEvent) {
             for _ in 0..<2 {
                 if let nodeName = checkNode?.name, nodeName.hasPrefix("program_") {
                     let programName = String(nodeName.dropFirst("program_".count))
-
-                    // Find the program type
                     if let programType = ProgramType.allCases.first(where: { $0.rawValue == programName }) {
-                        attemptToExecuteProgram(programType)
+                        tryExecuteActionAndAnimate(.program(programType))
                     }
                     return
                 }
@@ -746,58 +704,6 @@ override func mouseDown(with event: NSEvent) {
         updateDisplay()
     }
 
-    func handlePlayerMove(direction: Direction) {
-        // Get target info for animation (before game state changes)
-        let targetResult = gameState.findTargetInLineOfFire(direction: direction)
-        let oldPlayerRow = gameState.player.row
-        let oldPlayerCol = gameState.player.col
-
-        // Execute move/attack in game logic
-        let result = gameState.tryMove(direction: direction)
-
-        guard result.success else { return }
-
-        // Handle animations based on what happened
-        if let transmission = targetResult.transmission {
-            // Animate attack on transmission
-            isAnimating = true
-            animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
-                         toRow: transmission.row, toCol: transmission.col) { [weak self] in
-                self?.executeEnemyTurnWithAnimation()
-            }
-        } else if let enemy = targetResult.enemy {
-            // Animate attack on enemy
-            isAnimating = true
-            animateAttack(fromRow: oldPlayerRow, fromCol: oldPlayerCol,
-                         toRow: enemy.row, toCol: enemy.col) { [weak self] in
-                self?.executeEnemyTurnWithAnimation()
-            }
-        } else if result.exitReached {
-            // Player reached exit - advance stage
-            advanceToNextStage()
-        } else {
-            // Player moved - animate movement
-            isAnimating = true
-            updateDisplay() // Redraw everything at new positions
-
-            // Find and animate player node
-            if let playerNode = findPlayerNode() {
-                let fromPos = getCellPosition(row: oldPlayerRow, col: oldPlayerCol)
-                playerNode.position = fromPos
-
-                let moveAction = SKAction.move(to: getCellPosition(row: gameState.player.row, col: gameState.player.col), duration: 0.15)
-                moveAction.timingMode = .easeInEaseOut
-
-                playerNode.run(moveAction) { [weak self] in
-                    self?.executeEnemyTurnWithAnimation()
-                }
-            } else {
-                // No animation needed, proceed immediately
-                executeEnemyTurnWithAnimation()
-            }
-        }
-    }
-
     func findPlayerNode() -> SKNode? {
         let playerPos = getCellPosition(row: gameState.player.row, col: gameState.player.col)
         return entityNodes.values.first { node in
@@ -805,131 +711,137 @@ override func mouseDown(with event: NSEvent) {
         }
     }
 
-    func executeAndAnimateEnemyStep(currentStep: Int) {
-        // Capture positions before this step
-        var enemyOldPositions: [UUID: (row: Int, col: Int)] = [:]
-        for enemy in gameState.enemies {
-            enemyOldPositions[enemy.id] = (enemy.row, enemy.col)
+    // MARK: - Unified Action Processing
+
+    /// Execute an action and animate the result
+    func tryExecuteActionAndAnimate(_ action: GameAction) {
+        guard !isAnimating else { return }
+        guard gameState.player.health != .dead else { return }
+
+        let result = gameState.tryExecuteAction(action)
+        guard result.success else { return }
+
+        if result.gameWon {
+            animateActionResult(result) { [weak self] in
+                self?.showVictory()
+            }
+            return
         }
 
-        // Track which enemies are adjacent to player (will attack)
-        let attackingEnemies = gameState.enemies.filter { enemy in
-            !enemy.isDisabled && !enemy.isStunned &&
-            !enemiesWhoAttacked.contains(enemy.id) &&
-            currentStep < enemy.type.moveSpeed &&
-            gameState.isAdjacentToPlayer(enemy)
-        }
-
-        // Process this step (enemies move and attack)
-        let hasMoreSteps = gameState.executeEnemyStep(step: currentStep, enemiesWhoAttacked: &enemiesWhoAttacked)
-
-        // Animate enemy attacks first, then movements
-        animateEnemyAttacks(attackingEnemies: attackingEnemies) { [weak self] in
+        animateActionResult(result) { [weak self] in
             guard let self = self else { return }
+            self.updateDisplay()
+            if result.playerDied {
+                self.showGameOver()
+            }
+        }
+    }
 
-            // Animate enemies to their new positions (don't call updateDisplay yet - it would destroy nodes)
-            self.animateEnemyMovements(oldPositions: enemyOldPositions) { [weak self] in
+    /// Animate the result of an action
+    func animateActionResult(_ result: GameState.ActionResult, completion: @escaping () -> Void) {
+        isAnimating = true
+
+        animatePlayerAction(result.playerAction) { [weak self] in
+            guard let self = self else { return }
+            self.animateExplosions(at: result.affectedPositions) { [weak self] in
                 guard let self = self else { return }
-
-                // Now update display after animations are complete
-                self.updateDisplay()
-
-                if hasMoreSteps {
-                    // Continue to next step
-                    self.executeAndAnimateEnemyStep(currentStep: currentStep + 1)
-                } else {
-                    // All steps complete, finalize turn
-                    self.gameState.finalizeAnimatedEnemyTurn()
-                    self.updateDisplay()
-                    self.isAnimating = false
-
-                    // Check for game over
-                    if self.gameState.player.health == .dead {
-                        self.showGameOver()
-                    }
+                self.animateEnemyStepsFromResult(result.enemySteps, stepIndex: 0) { [weak self] in
+                    self?.isAnimating = false
+                    completion()
                 }
             }
         }
     }
 
-    func animateEnemyAttacks(attackingEnemies: [Enemy], completion: @escaping () -> Void) {
-        guard !attackingEnemies.isEmpty else {
+    func animatePlayerAction(_ playerAction: GameState.PlayerActionResult?, completion: @escaping () -> Void) {
+        guard let action = playerAction else {
             completion()
             return
         }
 
-        var attacksRemaining = attackingEnemies.count
-
-        for enemy in attackingEnemies {
-            animateAttack(fromRow: enemy.row, fromCol: enemy.col,
-                         toRow: gameState.player.row, toCol: gameState.player.col,
-                         isPlayerAttack: false) {
-                attacksRemaining -= 1
-                if attacksRemaining == 0 {
-                    completion()
-                }
+        if let target = action.attackedTarget {
+            animateAttack(fromRow: action.fromRow, fromCol: action.fromCol,
+                         toRow: target.row, toCol: target.col, isPlayerAttack: true, completion: completion)
+        } else if let moveTo = action.movedTo {
+            // Find player node at OLD position (before move)
+            let fromPos = getCellPosition(row: action.fromRow, col: action.fromCol)
+            if let playerNode = entityNodes.values.first(where: {
+                abs($0.position.x - fromPos.x) < 1 && abs($0.position.y - fromPos.y) < 1
+            }) {
+                let toPos = getCellPosition(row: moveTo.row, col: moveTo.col)
+                let moveAction = SKAction.move(to: toPos, duration: 0.15)
+                moveAction.timingMode = .easeInEaseOut
+                playerNode.run(moveAction, completion: completion)
+            } else {
+                completion()
             }
-        }
-    }
-
-    func animateEnemyMovements(oldPositions: [UUID: (row: Int, col: Int)], completion: @escaping () -> Void) {
-        var animationsRunning = 0
-
-        for enemy in gameState.enemies {
-            guard let oldPos = oldPositions[enemy.id] else { continue }
-
-            // Skip if enemy didn't move
-            if oldPos.row == enemy.row && oldPos.col == enemy.col {
-                continue
-            }
-
-            guard let enemyNode = entityNodes[enemy.id] else { continue }
-
-            animationsRunning += 1
-
-            let fromPos = getCellPosition(row: oldPos.row, col: oldPos.col)
-            enemyNode.position = fromPos
-
-            let moveAction = SKAction.move(to: getCellPosition(row: enemy.row, col: enemy.col), duration: 0.2)
-            moveAction.timingMode = .easeInEaseOut
-
-            enemyNode.run(moveAction) {
-                animationsRunning -= 1
-                if animationsRunning == 0 {
-                    completion()
-                }
-            }
-        }
-
-        // If no enemies moved, complete immediately
-        if animationsRunning == 0 {
+        } else {
             completion()
         }
     }
 
-    /// Execute enemy turn with animation (extracted to remove duplication)
-    func executeEnemyTurnWithAnimation() {
-        isAnimating = true
-        let shouldEnemiesMove = gameState.beginAnimatedEnemyTurn()
-        updateDisplay()
+    func animateEnemyStepsFromResult(_ steps: [GameState.EnemyStepResult], stepIndex: Int, completion: @escaping () -> Void) {
+        guard stepIndex < steps.count else {
+            completion()
+            return
+        }
 
-        if shouldEnemiesMove {
-            enemiesWhoAttacked = Set<UUID>()
-            executeAndAnimateEnemyStep(currentStep: 0)
-        } else {
-            gameState.finalizeAnimatedEnemyTurn()
-            isAnimating = false
+        let step = steps[stepIndex]
+        animateEnemyAttacksFromResult(step.attacks) { [weak self] in
+            guard let self = self else { return }
+            self.animateEnemyMovementsFromResult(step.movements) { [weak self] in
+                guard let self = self else { return }
+                self.updateDisplay()
+                self.animateEnemyStepsFromResult(steps, stepIndex: stepIndex + 1, completion: completion)
+            }
         }
     }
 
-    func advanceToNextStage() {
-        // Use game logic in GameState
-        let gameContinues = gameState.completeStage()
+    func animateEnemyAttacksFromResult(_ attacks: [(enemyId: UUID, damage: Int)], completion: @escaping () -> Void) {
+        guard !attacks.isEmpty else {
+            completion()
+            return
+        }
 
-        if gameContinues {
-            updateDisplay()
-        } else {
-            showVictory()
+        var remaining = attacks.count
+        for attack in attacks {
+            if let enemy = gameState.enemies.first(where: { $0.id == attack.enemyId }) {
+                animateAttack(fromRow: enemy.row, fromCol: enemy.col,
+                             toRow: gameState.player.row, toCol: gameState.player.col,
+                             isPlayerAttack: false) {
+                    remaining -= 1
+                    if remaining == 0 { completion() }
+                }
+            } else {
+                remaining -= 1
+                if remaining == 0 { completion() }
+            }
+        }
+    }
+
+    func animateEnemyMovementsFromResult(_ movements: [(enemyId: UUID, fromRow: Int, fromCol: Int, toRow: Int, toCol: Int)], completion: @escaping () -> Void) {
+        guard !movements.isEmpty else {
+            completion()
+            return
+        }
+
+        var remaining = movements.count
+        for movement in movements {
+            guard let enemyNode = entityNodes[movement.enemyId] else {
+                remaining -= 1
+                if remaining == 0 { completion() }
+                continue
+            }
+
+            let fromPos = getCellPosition(row: movement.fromRow, col: movement.fromCol)
+            enemyNode.position = fromPos
+            let toPos = getCellPosition(row: movement.toRow, col: movement.toCol)
+            let moveAction = SKAction.move(to: toPos, duration: 0.2)
+            moveAction.timingMode = .easeInEaseOut
+            enemyNode.run(moveAction) {
+                remaining -= 1
+                if remaining == 0 { completion() }
+            }
         }
     }
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-`processAction()` is THE function that advances the game until next user input. Both HeadlessGame and GUI call it. Enemy turn logic runs inside it. Returns data for GUI to animate.
+`tryExecuteAction()` is THE function that advances the game until next user input. Both HeadlessGame and GUI call it. Enemy turn logic runs inside it. Returns data for GUI to animate.
 
 **Key insight:** Game state advances synchronously, animation is just replay of what happened.
 
@@ -14,20 +14,17 @@
 - [x] Fix stepActive bug in beginAnimatedEnemyTurn
 - [x] Move GameAction enum to GameState.swift (renamed `.move` → `.direction`)
 - [x] Add `EnemyStepResult` struct
-- [x] Add `ActionResult` struct with `playerDied` and `enemySteps`
+- [x] Add `PlayerActionResult` struct (fromRow, fromCol, movedTo, attackedTarget)
+- [x] Add `ActionResult` struct with all animation data
 - [x] Add `runEnemyTurn()` helper
 - [x] Add `executeEnemyStepWithCapture()` method
-- [x] Update `processAction()` to include enemy turn
-- [x] Update `HeadlessGame.step()` to use `processAction()`
+- [x] Rename `tryMove()` → `tryAttackOrMove()` (since direction can attack OR move)
+- [x] Update `tryExecuteAction()` to include enemy turn AND stage completion
+- [x] Update `HeadlessGame.step()` to use `tryExecuteAction()` (uses result.stageAdvanced/gameWon)
 - [x] Refactor `moveEnemiesSimultaneously()` to filter enemies upfront
 
 ### Remaining
-- [ ] Update GameScene to use `handleAction()` + `animateActionResult()`
-  - This requires enriching `ActionResult` with player action details:
-    - Whether player moved vs attacked
-    - What was attacked (enemy/transmission position)
-    - Player movement (from/to positions)
-  - OR keep some pre-check logic in GameScene for player animations
+- [ ] Update GameScene to use `tryExecuteActionAndAnimate()` + `animateActionResult()`
 
 ---
 
@@ -37,6 +34,13 @@
 
 **New structs:**
 ```swift
+struct PlayerActionResult {
+    let fromRow: Int
+    let fromCol: Int
+    let movedTo: (row: Int, col: Int)?        // if player moved
+    let attackedTarget: (row: Int, col: Int)?  // if player attacked
+}
+
 struct EnemyStepResult {
     let step: Int  // 0, 1, etc (virus moves twice per turn)
     let movements: [(enemyId: UUID, fromRow: Int, fromCol: Int, toRow: Int, toCol: Int)]
@@ -46,18 +50,25 @@ struct EnemyStepResult {
 struct ActionResult {
     let success: Bool
     let exitReached: Bool
+    let stageAdvanced: Bool  // stage was completed
+    let gameWon: Bool        // player beat final stage
     let playerDied: Bool
-    let affectedPositions: [(row: Int, col: Int)]
-    let enemySteps: [EnemyStepResult]
+    let playerAction: PlayerActionResult?  // nil if action failed
+    let affectedPositions: [(row: Int, col: Int)]  // for explosion animations
+    let enemySteps: [EnemyStepResult]  // for enemy movement animations
+
+    static let failed = ActionResult(...)
 }
 ```
 
-**processAction()** now handles player action + enemy turn:
+**tryExecuteAction()** handles everything until next user input:
 ```swift
-func processAction(_ action: GameAction) -> ActionResult {
-    // 1. Handle player action (direction/siphon/program)
-    // 2. Run enemy turn if needed via runEnemyTurn()
-    // 3. Return ActionResult with all data
+func tryExecuteAction(_ action: GameAction) -> ActionResult {
+    // 1. Capture player position before action
+    // 2. Handle player action (direction/siphon/program)
+    // 3. If exit reached: call completeStage(), set stageAdvanced/gameWon
+    // 4. Run enemy turn if needed via runEnemyTurn()
+    // 5. Return ActionResult with all animation data
 }
 ```
 
@@ -65,13 +76,26 @@ func processAction(_ action: GameAction) -> ActionResult {
 
 **executeEnemyStepWithCapture()** executes one enemy step and captures movements/attacks.
 
+**tryAttackOrMove()** (renamed from tryMove) returns movedTo and attackedTarget for animation.
+
 ### HeadlessGame.swift
 
-**step()** is now simple:
+**step()** is now trivially simple:
 ```swift
 func step(action: GameAction) -> (GameObservation, Double, Bool, [String: Any]) {
-    let result = gameState.processAction(action)
-    // Handle result.success, result.exitReached, result.playerDied
+    let oldScore = gameState.player.score
+    let result = gameState.tryExecuteAction(action)
+
+    if !result.success { info["invalid_action"] = true }
+    if result.stageAdvanced {
+        isDone = result.gameWon
+        info["stage_complete"] = true
+    }
+    if result.playerDied {
+        isDone = true
+        info["death"] = true
+    }
+
     // Calculate reward
     return (observation, reward, isDone, info)
 }
@@ -83,48 +107,31 @@ func step(action: GameAction) -> (GameObservation, Double, Bool, [String: Any]) 
 
 ## What Remains: GameScene Refactor
 
-### Challenge
-
-GameScene currently checks state *before* actions to determine animations:
-- `handlePlayerMove()` calls `findTargetInLineOfFire()` before `tryMove()`
-- Then animates attack or movement based on what was found
-
-With `processAction()` doing everything at once, we need to either:
-
-1. **Enrich ActionResult** with player action details:
-   ```swift
-   struct ActionResult {
-       // ... existing fields ...
-       let playerAction: PlayerActionResult?  // NEW
-   }
-
-   struct PlayerActionResult {
-       let type: PlayerActionType  // .moved, .attacked, .siphoned, .program
-       let fromPosition: (row: Int, col: Int)
-       let toPosition: (row: Int, col: Int)?
-       let targetPosition: (row: Int, col: Int)?  // for attacks
-   }
-   ```
-
-2. **Keep pre-check logic** in GameScene for player animations, use `processAction()` only for enemy turn data
-
-3. **Defer GameScene refactor** - HeadlessGame works correctly now, GUI can be updated later
-
-### If We Continue
+### Plan
 
 ```swift
 // GameScene simplified flow:
-private func handleAction(_ action: GameAction) {
-    let result = gameState.processAction(action)
+private func tryExecuteActionAndAnimate(_ action: GameAction) {
+    let result = gameState.tryExecuteAction(action)
     if !result.success { return }
-    if result.exitReached { handleStageComplete(); return }
-    animateActionResult(result)
+
+    // Animate player action (move OR attack)
+    // Animate explosions (affectedPositions)
+    // Animate enemy steps (attacks first, then movements per step)
+
+    if result.exitReached {
+        // Still animate player moving to exit
+        // Then handle stage complete
+    }
 }
 
 private func animateActionResult(_ result: ActionResult) {
     // 1. Animate player action (from result.playerAction)
+    //    - If attackedTarget: show attack animation toward target
+    //    - If movedTo: animate player movement
     // 2. Animate explosions (from result.affectedPositions)
-    // 3. Animate enemy steps (from result.enemySteps)
+    // 3. Animate enemy steps sequentially:
+    //    - For each step: show attacks first, then movements
 }
 ```
 
@@ -132,7 +139,8 @@ private func animateActionResult(_ result: ActionResult) {
 
 ## Benefits Achieved
 
-- ✅ Single code path for game logic (`processAction()`)
+- ✅ Single code path for game logic (`tryExecuteAction()`)
+- ✅ Stage completion handled inside `tryExecuteAction()`
 - ✅ HeadlessGame is trivially simple
 - ✅ Enemy turn bug fixed (enemies now move in ML training)
 - ⏳ GUI animates from data (pending GameScene refactor)

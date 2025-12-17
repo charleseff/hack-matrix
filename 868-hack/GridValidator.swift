@@ -1,23 +1,25 @@
 import Foundation
 
 struct GridValidator {
-    /// Check if all non-block cells are connected (no isolated areas)
+    /// Check if all non-block, non-exit cells are connected (no isolated areas)
+    /// Exit is treated as a wall because stepping on it ends the stage
     static func isPathConnected(grid: Grid) -> Bool {
-        var nonBlockCells: [(Int, Int)] = []
+        var walkableCells: [(Int, Int)] = []
 
-        // Find all non-block cells
+        // Find all walkable cells (not blocks, not exit)
         for row in 0..<Constants.gridSize {
             for col in 0..<Constants.gridSize {
-                if !grid.cells[row][col].hasBlock {
-                    nonBlockCells.append((row, col))
+                let cell = grid.cells[row][col]
+                if !cell.hasBlock && !cell.isExit {
+                    walkableCells.append((row, col))
                 }
             }
         }
 
-        guard !nonBlockCells.isEmpty else { return true }
+        guard !walkableCells.isEmpty else { return true }
 
-        // BFS from first non-block cell
-        let start = nonBlockCells[0]
+        // BFS from first walkable cell
+        let start = walkableCells[0]
         var visited = Set<String>()
         var queue = [start]
         visited.insert("\(start.0),\(start.1)")
@@ -35,15 +37,17 @@ struct GridValidator {
 
                 let key = "\(newRow),\(newCol)"
                 guard !visited.contains(key) else { continue }
-                guard !grid.cells[newRow][newCol].hasBlock else { continue }
+
+                let cell = grid.cells[newRow][newCol]
+                guard !cell.hasBlock && !cell.isExit else { continue }
 
                 visited.insert(key)
                 queue.append((newRow, newCol))
             }
         }
 
-        // All non-block cells should be visited
-        return visited.count == nonBlockCells.count
+        // All walkable cells should be visited
+        return visited.count == walkableCells.count
     }
 
     /// Check if all blocks have at least one adjacent non-block cell (siphonable)
