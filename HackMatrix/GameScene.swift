@@ -737,7 +737,7 @@ override func mouseDown(with event: NSEvent) {
         if result.gameWon {
             animateActionResult(result) { [weak self] in
                 self?.showVictory()
-                self?.visualController?.onAnimationComplete()
+                self?.visualController?.onAnimationComplete(actionResult: result)
             }
             return
         }
@@ -748,7 +748,7 @@ override func mouseDown(with event: NSEvent) {
             if result.playerDied {
                 self.showGameOver()
             }
-            self.visualController?.onAnimationComplete()
+            self.visualController?.onAnimationComplete(actionResult: result)
         }
     }
 

@@ -91,13 +91,13 @@ class GameState {
         state.player = Player(row: 3, col: 1)
         state.player.health = .full
         state.player.score = 5
-        state.player.credits = 12
-        state.player.energy = 16
-        state.player.dataSiphons = 0
+        state.player.credits = 1200
+        state.player.energy = 1600
+        state.player.dataSiphons = 200
 
         // Add owned programs (example - adjust as needed)
         // state.ownedPrograms = [.col, .row, .warp, .crash, .exch, .show, .reset, .dBomb, .antiV, .calm, .delay, .atkPlus, .debug, .reduc, .score, .hack]
-        state.ownedPrograms = [ .exch]
+        state.ownedPrograms = [ .warp]
 
         // Place enemies
         let virus = Enemy(type: .virus, row: 1, col: 1)
@@ -922,6 +922,7 @@ class GameState {
         let playerAction: PlayerActionResult?  // nil if action failed
         let affectedPositions: [(row: Int, col: Int)]  // for explosion animations
         let enemySteps: [EnemyStepResult]  // for enemy movement animations
+        let reward: Double  // calculated reward for RL training
 
         static let failed = ActionResult(
             success: false,
@@ -931,16 +932,18 @@ class GameState {
             playerDied: false,
             playerAction: nil,
             affectedPositions: [],
-            enemySteps: []
+            enemySteps: [],
+            reward: 0.0
         )
     }
 
     /// Execute a game action - single entry point for all action processing
     /// Runs player action AND enemy turn (if applicable), returns all data for animation
     func tryExecuteAction(_ action: GameAction) -> ActionResult {
-        // Capture player position before action
+        // Capture player position and score before action
         let fromRow = player.row
         let fromCol = player.col
+        let oldScore = player.score
 
         var success = true
         var exitReached = false
@@ -998,16 +1001,25 @@ class GameState {
             enemySteps = runEnemyTurn()
         }
 
-        // 4. Return everything
+        // 4. Calculate reward and return everything
+        let playerDied = player.health == .dead
+        let reward = calculateReward(
+            oldScore: oldScore,
+            playerDied: playerDied,
+            gameWon: gameWon,
+            stageAdvanced: stageAdvanced
+        )
+
         return ActionResult(
             success: true,
             exitReached: exitReached,
             stageAdvanced: stageAdvanced,
             gameWon: gameWon,
-            playerDied: player.health == .dead,
+            playerDied: playerDied,
             playerAction: playerAction,
             affectedPositions: affectedPositions,
-            enemySteps: enemySteps
+            enemySteps: enemySteps,
+            reward: reward
         )
     }
 
@@ -1847,4 +1859,34 @@ struct CellSnapshot {
     let resources: ResourceType
     let isSiphoned: Bool
     let siphonCenter: Bool
+}
+
+// MARK: - Reward Calculation
+
+extension GameState {
+    /// Calculate reward for reinforcement learning based on action outcome
+    /// - Parameters:
+    ///   - oldScore: Player score before action
+    ///   - playerDied: Whether player died
+    ///   - gameWon: Whether player won the game
+    ///   - stageAdvanced: Whether stage was completed
+    /// - Returns: Reward value for RL training
+    func calculateReward(oldScore: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool) -> Double {
+        let scoreDelta = Double(player.score - oldScore)
+        var reward = scoreDelta * 0.01
+
+        // Terminal state rewards
+        if playerDied {
+            // Death gives no reward
+            reward = 0.0
+        } else if gameWon {
+            // Winning gives massive reward based on final score
+            reward = Double(player.score) * 10.0 + 10
+        } else if stageAdvanced {
+            // Completing a non-final stage gives bonus reward
+            reward += 0.01
+        }
+
+        return reward
+    }
 }
