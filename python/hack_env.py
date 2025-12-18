@@ -76,11 +76,16 @@ class HackEnv(gym.Env):
             self.process.wait()
 
         flag = "--visual-cli" if self.visual else "--headless-cli"
+
+        # Open log file for Swift stderr (debug output)
+        mode = "visual" if self.visual else "headless"
+        stderr_log = open(f"/tmp/swift_{mode}.log", "w")
+
         self.process = subprocess.Popen(
             [self.app_path, flag],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr_log,  # Write Swift debug output to log file
             text=True,
             bufsize=1
         )

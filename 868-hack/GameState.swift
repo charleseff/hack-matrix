@@ -1750,11 +1750,42 @@ class GameState {
     func getValidActions() -> [GameAction] {
         var actions: [GameAction] = []
 
-        // Movement actions - only if not blocked by edge
-        if player.row > 0 { actions.append(.direction(.up)) }
-        if player.row < 5 { actions.append(.direction(.down)) }
-        if player.col > 0 { actions.append(.direction(.left)) }
-        if player.col < 5 { actions.append(.direction(.right)) }
+        // Helper to check if a direction is valid (not blocked by edge or empty block)
+        func canMoveOrAttack(toRow: Int, toCol: Int) -> Bool {
+            // Check grid bounds
+            guard toRow >= 0 && toRow < 6 && toCol >= 0 && toCol < 6 else {
+                return false
+            }
+
+            let targetCell = grid.cells[toRow][toCol]
+
+            // Can move/attack if:
+            // 1. Cell is empty, OR
+            // 2. Cell has an enemy (becomes attack), OR
+            // 3. Cell has a block WITH an enemy on it (attack enemy on block)
+            // Cannot move if: Cell has a block with NO enemy
+            if case .block = targetCell.content {
+                // Block exists - can only move here if there's an enemy on it
+                return enemies.contains(where: { $0.row == toRow && $0.col == toCol })
+            }
+
+            return true
+        }
+
+        // Movement actions - check bounds and blocks
+        // Note: row 0 = bottom of screen, row 5 = top of screen
+        if canMoveOrAttack(toRow: player.row + 1, toCol: player.col) {
+            actions.append(.direction(.up))  // Up = towards top = increasing row
+        }
+        if canMoveOrAttack(toRow: player.row - 1, toCol: player.col) {
+            actions.append(.direction(.down))  // Down = towards bottom = decreasing row
+        }
+        if canMoveOrAttack(toRow: player.row, toCol: player.col - 1) {
+            actions.append(.direction(.left))
+        }
+        if canMoveOrAttack(toRow: player.row, toCol: player.col + 1) {
+            actions.append(.direction(.right))
+        }
 
         // Siphon - only if player has data siphons available
         if player.dataSiphons > 0 {

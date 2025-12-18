@@ -4,10 +4,21 @@ import SpriteKit
 @main
 struct HackApp: App {
     init() {
+        fputs("==> HackApp.init() called\n", stderr)
+        fflush(stderr)
+
         // Check for --headless-cli (Python wrapper interface)
         if CommandLine.arguments.contains("--headless-cli") {
+            fputs("==> Starting headless CLI mode\n", stderr)
+            fflush(stderr)
             HeadlessGameCLI().run()
             exit(0)
+        }
+
+        // Check for --visual-cli mode
+        if CommandLine.arguments.contains("--visual-cli") {
+            fputs("==> Starting visual CLI mode (GUI with stdin/stdout)\n", stderr)
+            fflush(stderr)
         }
 
         // Check for --headless-test command-line argument

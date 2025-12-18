@@ -37,12 +37,15 @@ def test_basic_functionality(visual=False, steps=5, delay=0.0):
 
     # Take random steps
     for i in range(steps):
+        print(f"Attempting  step {i+1}. Getting valid actions...")
         valid_actions = env.get_valid_actions()
+        print(f"Valid actions: {valid_actions}")
         if not valid_actions:
             print("  No valid actions, game likely over")
             break
 
         action = np.random.choice(valid_actions)
+        print(f"Attempting action {action}")
         obs, reward, terminated, truncated, info = env.step(action)
 
         print(f"  Step {i+1}: action={action}, reward={reward}, done={terminated}")
