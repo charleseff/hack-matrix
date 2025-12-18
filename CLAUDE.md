@@ -28,6 +28,62 @@ Player takes one of these actions:
 
 ---
 
+## Architecture Overview
+
+### Entry Points
+
+The app has multiple entry points for different use cases:
+
+| Flag | Purpose | GUI | Execution |
+|------|---------|-----|-----------|
+| (none) | Human plays game | Yes | Interactive |
+| `--headless-cli` | ML training | No | Instant |
+| `--visual-cli` | Watch ML play | Yes | Animated |
+| `--debug-scenario` | Test specific scenario | Yes | Interactive |
+
+### Call Hierarchies
+
+**GUI Mode (Human Player):**
+```
+App → ContentView → GameScene
+  User Input → GameScene.keyDown/mouseDown
+    → tryExecuteActionAndAnimate()
+      → GameState.tryExecuteAction() [game logic]
+      → animateActionResult() [visuals]
+```
+
+**Headless CLI Mode (ML Training):**
+```
+App → HeadlessGameCLI → StdinCommandReader
+  Python stdin → executeStep()
+    → HeadlessGame.step()
+      → GameState.tryExecuteAction() [same logic]
+      → ObservationBuilder.build() [state → observation]
+```
+
+**Visual CLI Mode (Watch ML):**
+```
+App → ContentView → GameScene + VisualGameController
+  Python stdin → executeStep()
+    → GameScene.tryExecuteActionAndAnimate()
+      → GameState.tryExecuteAction() [same logic]
+      → animateActionResult() [visuals]
+      → Wait for animation → return observation
+```
+
+### Key Components
+
+| Component | Responsibility |
+|-----------|----------------|
+| **GameState** | All game logic (movement, combat, programs, stage gen) - single source of truth |
+| **GameScene** | Visual rendering, animation, user input handling |
+| **ObservationBuilder** | Convert GameState → GameObservation for ML |
+| **HeadlessGameCLI** | stdin/stdout protocol for headless mode |
+| **VisualGameController** | stdin/stdout protocol for visual mode (syncs with animations) |
+| **StdinCommandReader** | Parse JSON commands, encode responses |
+
+---
+
 ## Python-Swift Bridge (ML Training)
 
 ### Architecture

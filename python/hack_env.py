@@ -4,11 +4,16 @@ Communicates with Swift game via JSON over subprocess.
 """
 
 import json
+import os
 import subprocess
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 import gymnasium as gym
 from gymnasium import spaces
+
+# Default app path relative to this file
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "DerivedData", "Build", "Products", "Debug", "868-hack.app", "Contents", "MacOS", "868-hack")
 
 
 class HackEnv(gym.Env):
@@ -16,16 +21,18 @@ class HackEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, app_path: str = "../DerivedData/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack"):
+    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False):
         """
         Initialize the environment.
 
         Args:
             app_path: Path to the Swift executable
+            visual: If True, launch GUI with animations (visual CLI mode)
         """
         super().__init__()
 
         self.app_path = app_path
+        self.visual = visual
         self.process: Optional[subprocess.Popen] = None
 
         # Action space: 31 discrete actions (4 moves + 1 siphon + 26 programs)
@@ -68,14 +75,20 @@ class HackEnv(gym.Env):
             self.process.terminate()
             self.process.wait()
 
+        flag = "--visual-cli" if self.visual else "--headless-cli"
         self.process = subprocess.Popen(
-            [self.app_path, "--headless-cli"],
+            [self.app_path, flag],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1
         )
+
+        # Give GUI time to initialize if in visual mode
+        if self.visual:
+            import time
+            time.sleep(2.0)
 
     def _send_command(self, command: Dict[str, Any]) -> Dict[str, Any]:
         """Send a command to the Swift process and get response."""

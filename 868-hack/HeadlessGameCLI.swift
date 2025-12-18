@@ -20,23 +20,14 @@ class HeadlessGameCLI: GameCommandExecutor {
 
     func executeReset() -> GameObservation {
         game = HeadlessGame()
-        return game!.getObservation()
+        return game!.reset()
     }
 
     func executeStep(actionIndex: Int) -> (GameObservation, Double, Bool, [String: Any]) {
-        guard let game = game,
-              let action = GameAction.fromIndex(actionIndex) else {
-            // Return error state
-            return (GameObservation(
-                playerRow: 0, playerCol: 0, playerHP: 0,
-                credits: 0, energy: 0, stage: 0, turn: 0,
-                dataSiphons: 0, baseAttack: 0,
-                cells: [], cryptogHints: [],
-                showActivated: false
-            ), 0, true, [:])
+        guard let game = game else {
+            fatalError("Game not initialized")
         }
-
-        return game.step(action: action)
+        return game.step(actionIndex: actionIndex)
     }
 
     func executeGetValidActions() -> [Int] {

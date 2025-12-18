@@ -1745,6 +1745,31 @@ class GameState {
             return false  // Victory!
         }
     }
+
+    /// Get valid actions based on current state
+    func getValidActions() -> [GameAction] {
+        var actions: [GameAction] = []
+
+        // Movement actions - only if not blocked by edge
+        if player.row > 0 { actions.append(.direction(.up)) }
+        if player.row < 5 { actions.append(.direction(.down)) }
+        if player.col > 0 { actions.append(.direction(.left)) }
+        if player.col < 5 { actions.append(.direction(.right)) }
+
+        // Siphon - only if player has data siphons available
+        if player.dataSiphons > 0 {
+            actions.append(.siphon)
+        }
+
+        // Programs - use canExecuteProgram which checks ownership, resources, and applicability
+        for programType in ProgramType.allCases {
+            if canExecuteProgram(programType).canExecute {
+                actions.append(.program(programType))
+            }
+        }
+
+        return actions
+    }
 }
 
 struct GameStateSnapshot {

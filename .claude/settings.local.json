@@ -4,7 +4,9 @@
       "Bash(ls:*)",
       "Bash(python test_env.py:*)",
       "Bash(source:*)",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(swift build:*)",
+      "Bash(readlink:*)"
     ]
   }
 }

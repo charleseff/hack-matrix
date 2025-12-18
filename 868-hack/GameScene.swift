@@ -10,6 +10,10 @@ class GameScene: SKScene {
     var isAnimating: Bool = false
     var programButtons: [ProgramType: SKNode] = [:]
 
+    // Visual CLI mode controller
+    private var visualController: VisualGameController?
+
+    // Called when scene is first presented - initialize game state and UI
     override func didMove(to view: SKView) {
         print("GameScene didMove called!")
         print("Scene size: \(size)")
@@ -30,6 +34,14 @@ class GameScene: SKScene {
         print("Grid setup complete")
         updateDisplay()
         print("Display updated")
+
+        // Check for --visual-cli mode (GUI driven by stdin/stdout)
+        if CommandLine.arguments.contains("--visual-cli") {
+            print("[Visual CLI] Initializing controller...")
+            visualController = VisualGameController(gameScene: self)
+            visualController?.start()
+            print("[Visual CLI] Controller started, listening for stdin commands")
+        }
     }
 
     func setupGrid() {
@@ -724,6 +736,7 @@ override func mouseDown(with event: NSEvent) {
         if result.gameWon {
             animateActionResult(result) { [weak self] in
                 self?.showVictory()
+                self?.visualController?.onAnimationComplete()
             }
             return
         }
@@ -734,6 +747,7 @@ override func mouseDown(with event: NSEvent) {
             if result.playerDied {
                 self.showGameOver()
             }
+            self.visualController?.onAnimationComplete()
         }
     }
 

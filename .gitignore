@@ -5,6 +5,7 @@
 # Xcode build artifacts
 DerivedData/
 .build/
+.build*/
 
 # Python
 python/venv/

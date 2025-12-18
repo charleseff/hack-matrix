@@ -19,7 +19,7 @@ class HeadlessTest {
                 let validActions = game.getValidActions()
                 guard let randomAction = validActions.randomElement() else { break }
 
-                let (_, _, done, _) = game.step(action: randomAction)
+                let (_, _, done, _) = game.step(actionIndex: randomAction.toIndex())
                 isDone = done
                 stepCount += 1
             }
