@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "561CF5092EE78EA70074CD5A"
-               BuildableName = "868-hack.app"
-               BlueprintName = "868-hack"
-               ReferencedContainer = "container:868-hack.xcodeproj">
+               BuildableName = "HackMatrix.app"
+               BlueprintName = "HackMatrix"
+               ReferencedContainer = "container:HackMatrix.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "561CF5092EE78EA70074CD5A"
-            BuildableName = "868-hack.app"
-            BlueprintName = "868-hack"
-            ReferencedContainer = "container:868-hack.xcodeproj">
+            BuildableName = "HackMatrix.app"
+            BlueprintName = "HackMatrix"
+            ReferencedContainer = "container:HackMatrix.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "561CF5092EE78EA70074CD5A"
-            BuildableName = "868-hack.app"
-            BlueprintName = "868-hack"
-            ReferencedContainer = "container:868-hack.xcodeproj">
+            BuildableName = "HackMatrix.app"
+            BlueprintName = "HackMatrix"
+            ReferencedContainer = "container:HackMatrix.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

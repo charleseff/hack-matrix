@@ -31,26 +31,6 @@
       ],
       "cwd": "${workspaceFolder}",
       "preLaunchTask": "Build HackMatrix"
-    },
-    {
-      "type": "swift",
-      "request": "launch",
-      "args": [],
-      "cwd": "${workspaceFolder:868-hack-2}",
-      "name": "Debug HackMatrix",
-      "target": "HackMatrix",
-      "configuration": "debug",
-      "preLaunchTask": "swift: Build Debug HackMatrix"
-    },
-    {
-      "type": "swift",
-      "request": "launch",
-      "args": [],
-      "cwd": "${workspaceFolder:868-hack-2}",
-      "name": "Release HackMatrix",
-      "target": "HackMatrix",
-      "configuration": "release",
-      "preLaunchTask": "swift: Build Release HackMatrix"
     }
   ]
 }
