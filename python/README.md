@@ -1,12 +1,12 @@
-# 868-HACK RL Training
+# HackMatrix RL Training
 
-Python wrapper and training scripts for training reinforcement learning agents to play 868-HACK.
+Python wrapper and training scripts for training reinforcement learning agents to play HackMatrix.
 
 ## Setup
 
 1. **Build the Swift app** (from project root):
    ```bash
-   xcodebuild -scheme 868-hack -configuration Debug build
+   xcodebuild -scheme HackMatrix -configuration Debug build
    ```
 
 2. **Install Python dependencies**:

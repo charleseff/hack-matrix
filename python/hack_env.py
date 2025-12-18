@@ -1,5 +1,5 @@
 """
-Gymnasium environment wrapper for 868-HACK game.
+Gymnasium environment wrapper for HackMatrix game.
 Communicates with Swift game via JSON over subprocess.
 """
 
@@ -13,11 +13,11 @@ from gymnasium import spaces
 
 # Default app path relative to this file
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "DerivedData", "Build", "Products", "Debug", "868-hack.app", "Contents", "MacOS", "868-hack")
+_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "DerivedData", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
 
 
 class HackEnv(gym.Env):
-    """868-HACK Gymnasium environment."""
+    """HackMatrix Gymnasium environment."""
 
     metadata = {"render_modes": []}
 

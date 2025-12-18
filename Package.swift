@@ -2,20 +2,20 @@
 import PackageDescription
 
 let package = Package(
-    name: "868-hack",
+    name: "HackMatrix",
     platforms: [
         .macOS(.v14)
     ],
     products: [
         .executable(
-            name: "868-hack",
-            targets: ["868-hack"]
+            name: "HackMatrix",
+            targets: ["HackMatrix"]
         )
     ],
     targets: [
         .executableTarget(
-            name: "868-hack",
-            path: "868-hack",
+            name: "HackMatrix",
+            path: "HackMatrix",
             exclude: [
                 "Info.plist",
                 "Assets.xcassets"

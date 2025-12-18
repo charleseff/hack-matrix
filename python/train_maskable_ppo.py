@@ -1,5 +1,5 @@
 """
-Train a MaskablePPO agent to play 868-HACK with action masking.
+Train a MaskablePPO agent to play HackMatrix with action masking.
 """
 
 import os
@@ -122,7 +122,7 @@ def train(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Train MaskablePPO agent for 868-HACK")
+    parser = argparse.ArgumentParser(description="Train MaskablePPO agent for HackMatrix")
     parser.add_argument("--timesteps", type=int, default=1_000_000,
                         help="Total timesteps to train (default: 1,000,000)")
     parser.add_argument("--save-freq", type=int, default=10_000,

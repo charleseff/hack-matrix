@@ -1,4 +1,4 @@
-# 868-HACK Game Architecture
+# HackMatrix Game Architecture
 
 ## Project Conventions
 
@@ -91,7 +91,7 @@ App → ContentView → GameScene + VisualGameController
 ```
 python/test_env.py or train_maskable_ppo.py
     └── python/hack_env.py (Gymnasium environment)
-            └── subprocess: 868-hack --headless-cli
+            └── subprocess: HackMatrix --headless-cli
                     └── HeadlessGameCLI.swift (JSON stdin/stdout)
                             └── HeadlessGame.swift (game wrapper)
                                     └── GameState.tryExecuteAction()
@@ -148,13 +148,13 @@ python test_env.py
 | `python/hack_env.py` | Gymnasium environment wrapper |
 | `python/test_env.py` | Basic functionality test |
 | `python/train_maskable_ppo.py` | MaskablePPO training script |
-| `868-hack/HeadlessGameCLI.swift` | JSON protocol handler |
-| `868-hack/HeadlessGame.swift` | Game state + observation encoding |
+| `HackMatrix/HeadlessGameCLI.swift` | JSON protocol handler |
+| `HackMatrix/HeadlessGame.swift` | Game state + observation encoding |
 
 ### Build Path
 
 The Python environment expects the app at:
 ```
-DerivedData/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack
+DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix
 ```
 This matches VSCode's build output location (see `.vscode/launch.json`).

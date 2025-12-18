@@ -13,7 +13,7 @@ class MenuScene: SKScene {
         removeAllChildren()
 
         // Title
-        let titleLabel = SKLabelNode(text: "868-HACK")
+        let titleLabel = SKLabelNode(text: "HackMatrix")
         titleLabel.fontName = "Menlo-Bold"
         titleLabel.fontSize = 48
         titleLabel.fontColor = .init(red: 0.5, green: 0.9, blue: 1.0, alpha: 1.0)

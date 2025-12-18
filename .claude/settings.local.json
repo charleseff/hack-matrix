@@ -6,7 +6,8 @@
       "Bash(source:*)",
       "Bash(xargs ls:*)",
       "Bash(swift build:*)",
-      "Bash(readlink:*)"
+      "Bash(readlink:*)",
+      "Bash(find:*)"
     ]
   }
 }

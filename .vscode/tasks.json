@@ -2,12 +2,12 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build 868-hack",
+      "label": "Build HackMatrix",
       "type": "shell",
       "command": "xcodebuild",
       "args": [
-        "-project", "${workspaceFolder}/868-hack.xcodeproj",
-        "-scheme", "868-hack",
+        "-project", "${workspaceFolder}/HackMatrix.xcodeproj",
+        "-scheme", "HackMatrix",
         "-configuration", "Debug",
         "-derivedDataPath", "${workspaceFolder}/DerivedData",
         "clean", "build"
@@ -22,8 +22,8 @@
       "label": "Run GUI",
       "type": "shell",
       "command": "open",
-      "args": ["${workspaceFolder}/DerivedData/Build/Products/Debug/868-hack.app"],
-      "dependsOn": "Build 868-hack",
+      "args": ["${workspaceFolder}/DerivedData/Build/Products/Debug/HackMatrix.app"],
+      "dependsOn": "Build HackMatrix",
       "problemMatcher": [],
       "presentation": {
         "reveal": "never"

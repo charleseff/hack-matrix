@@ -5,40 +5,52 @@
       "name": "Debug Headless CLI",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack",
+      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
       "args": [
         "--headless-cli"
       ],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build 868-hack"
+      "preLaunchTask": "Build HackMatrix"
     },
     {
-      "name": "Debug 868-hack",
+      "name": "Debug HackMatrix",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack",
+      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build 868-hack"
+      "preLaunchTask": "Build HackMatrix"
     },
     {
       "name": "debug scenario",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/868-hack.app/Contents/MacOS/868-hack",
-      "args": ["--debug-scenario"],
+      "program": "${workspaceFolder}/DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": [
+        "--debug-scenario"
+      ],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build 868-hack"
+      "preLaunchTask": "Build HackMatrix"
     },
     {
-      "name": "Release 868-hack",
       "type": "swift",
       "request": "launch",
       "args": [],
       "cwd": "${workspaceFolder:868-hack-2}",
-      "target": "868-hack",
+      "name": "Debug HackMatrix",
+      "target": "HackMatrix",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug HackMatrix"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:868-hack-2}",
+      "name": "Release HackMatrix",
+      "target": "HackMatrix",
       "configuration": "release",
-      "preLaunchTask": "swift: Build Release 868-hack"
+      "preLaunchTask": "swift: Build Release HackMatrix"
     }
   ]
 }

@@ -1,5 +1,5 @@
 """
-Test script for the 868-HACK environment.
+Test script for the HackMatrix environment.
 """
 
 from hack_env import HackEnv
@@ -18,7 +18,7 @@ def test_basic_functionality(visual=False, steps=5, delay=0.0):
         delay: Seconds to wait between steps (useful for visual mode)
     """
     mode = "visual CLI" if visual else "headless"
-    print(f"Testing 868-HACK environment ({mode} mode)...")
+    print(f"Testing HackMatrix environment ({mode} mode)...")
 
     # Create environment
     env = HackEnv(visual=visual)

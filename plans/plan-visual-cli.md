@@ -25,8 +25,8 @@ Goal: Run GUI driven by stdin/stdout JSON (same protocol as headless), to visual
 ## Phase 1: Extract Shared Protocol
 
 **Files:**
-- `868-hack/GameCommandProtocol.swift` (new)
-- `868-hack/HeadlessGameCLI.swift`
+- `HackMatrix/GameCommandProtocol.swift` (new)
+- `HackMatrix/HeadlessGameCLI.swift`
 
 ### GameCommandProtocol.swift
 
@@ -165,8 +165,8 @@ Run `python/test_env.py` to verify headless mode still works.
 ## Phase 2: Visual CLI Implementation
 
 **Files:**
-- `868-hack/App.swift`
-- `868-hack/GameScene.swift`
+- `HackMatrix/App.swift`
+- `HackMatrix/GameScene.swift`
 
 ### App.swift
 
