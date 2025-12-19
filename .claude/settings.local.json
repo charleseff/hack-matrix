@@ -8,7 +8,8 @@
       "Bash(swift build:*)",
       "Bash(readlink:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__linear-server__create_issue"
     ]
   }
 }

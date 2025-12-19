@@ -67,6 +67,6 @@ if __name__ == "__main__":
     # Check for --visual flag
     visual = "--visual" in sys.argv
     steps = 1000 if visual else 5
-    delay = 0
+    delay = 0.5
 
     test_basic_functionality(visual=visual, steps=steps, delay=delay)

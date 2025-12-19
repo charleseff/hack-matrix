@@ -9,6 +9,7 @@ import numpy as np
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
 from hack_env import HackEnv
@@ -22,7 +23,9 @@ def mask_fn(env: HackEnv) -> np.ndarray:
 def make_env():
     """Create and wrap the environment."""
     env = HackEnv()
-    return ActionMasker(env, mask_fn)
+    env = ActionMasker(env, mask_fn)  # ActionMasker needs access to HackEnv
+    env = Monitor(env)  # Monitor goes on the outside to track episode statistics
+    return env
 
 
 def train(

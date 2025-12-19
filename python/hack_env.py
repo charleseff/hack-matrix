@@ -21,18 +21,20 @@ class HackEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False):
+    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False, debug_scenario: bool = False):
         """
         Initialize the environment.
 
         Args:
             app_path: Path to the Swift executable
             visual: If True, launch GUI with animations (visual CLI mode)
+            debug_scenario: If True, use debug scenario instead of random stages
         """
         super().__init__()
 
         self.app_path = app_path
         self.visual = visual
+        self.debug_scenario = debug_scenario
         self.process: Optional[subprocess.Popen] = None
 
         # Action space: 31 discrete actions (4 moves + 1 siphon + 26 programs)
@@ -81,8 +83,13 @@ class HackEnv(gym.Env):
         mode = "visual" if self.visual else "headless"
         stderr_log = open(f"/tmp/swift_{mode}.log", "w")
 
+        # Build command with optional debug scenario
+        cmd = [self.app_path, flag]
+        if self.debug_scenario:
+            cmd.append("--debug-scenario")
+
         self.process = subprocess.Popen(
-            [self.app_path, flag, "--debug-scenario"],
+            cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=stderr_log,  # Write Swift debug output to log file
