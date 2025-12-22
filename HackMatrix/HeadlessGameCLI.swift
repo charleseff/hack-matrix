@@ -12,6 +12,15 @@ class HeadlessGameCLI: GameCommandExecutor {
             return
         }
 
+        // Configure logging level based on flags
+        if CommandLine.arguments.contains("--debug") {
+            DebugConfig.logLevel = .debug
+            debugLog("HeadlessGameCLI", "Debug logging enabled (verbose)")
+        } else if CommandLine.arguments.contains("--info") {
+            DebugConfig.logLevel = .info
+            infoLog("HeadlessGameCLI", "Info logging enabled")
+        }
+
         commandReader.executor = self
         commandReader.start()
     }
@@ -19,15 +28,19 @@ class HeadlessGameCLI: GameCommandExecutor {
     // MARK: - GameCommandExecutor
 
     func executeReset() -> GameObservation {
+        infoLog("Reset called - creating new game")
         game = HeadlessGame()
-        return game!.reset()
+        let obs = game!.reset()
+        infoLog("Reset complete - stage \(obs.stage)")
+        return obs
     }
 
     func executeStep(actionIndex: Int) -> (GameObservation, Double, Bool, [String: Any]) {
         guard let game = game else {
             fatalError("Game not initialized")
         }
-        return game.step(actionIndex: actionIndex)
+        let (obs, reward, done, info) = game.step(actionIndex: actionIndex)
+        return (obs, reward, done, info)
     }
 
     func executeGetValidActions() -> [Int] {

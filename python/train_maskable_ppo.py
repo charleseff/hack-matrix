@@ -20,20 +20,15 @@ def mask_fn(env: HackEnv) -> np.ndarray:
     return env._get_action_mask()
 
 
-def make_env():
-    """Create and wrap the environment."""
-    env = HackEnv()
-    env = ActionMasker(env, mask_fn)  # ActionMasker needs access to HackEnv
-    env = Monitor(env)  # Monitor goes on the outside to track episode statistics
-    return env
-
-
 def train(
         total_timesteps: int = 1_000_000,
         save_freq: int = 10_000,
         eval_freq: int = 5_000,
         log_dir: str = "./logs",
-        model_dir: str = "./models"
+        model_dir: str = "./models",
+        resume_path: str = None,
+        debug: bool = False,
+        info: bool = False
 ):
     """
     Train a MaskablePPO agent with action masking.
@@ -44,6 +39,9 @@ def train(
         eval_freq: Evaluate every N steps
         log_dir: Directory for TensorBoard logs
         model_dir: Directory to save models
+        resume_path: Path to checkpoint to resume from
+        debug: Enable verbose debug logging
+        info: Enable info-level logging (less verbose)
     """
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
@@ -53,27 +51,49 @@ def train(
     run_model_dir = os.path.join(model_dir, f"maskable_ppo_{timestamp}")
     os.makedirs(run_model_dir, exist_ok=True)
 
+    if debug:
+        print("⚠️  Debug mode: ENABLED (verbose logging)")
+    elif info:
+        print("ℹ️  Info mode: ENABLED (important events only)")
+
+    def make_env():
+        """Create and wrap the environment."""
+        env = HackEnv(debug=debug, info=info)
+        env = ActionMasker(env, mask_fn)  # ActionMasker needs access to HackEnv
+        env = Monitor(env)  # Monitor goes on the outside to track episode statistics
+        return env
+
     print("Creating environment...")
     env = DummyVecEnv([make_env])
 
     print("Creating eval environment...")
     eval_env = DummyVecEnv([make_env])
 
-    print("Initializing MaskablePPO agent...")
-    model = MaskablePPO(
-        "MultiInputPolicy",
-        env,
-        verbose=1,
-        tensorboard_log=run_log_dir,
-        learning_rate=3e-4,
-        n_steps=2048,
-        batch_size=64,
-        n_epochs=10,
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        ent_coef=0.01,
-    )
+    if resume_path:
+        print(f"Resuming training from: {resume_path}")
+        model = MaskablePPO.load(
+            resume_path,
+            env=env,
+            verbose=1,
+            tensorboard_log=run_log_dir
+        )
+        print("Model loaded successfully!")
+    else:
+        print("Initializing MaskablePPO agent...")
+        model = MaskablePPO(
+            "MultiInputPolicy",
+            env,
+            verbose=1,
+            tensorboard_log=run_log_dir,
+            learning_rate=3e-4,
+            n_steps=2048,
+            batch_size=64,
+            n_epochs=10,
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=0.1,  # High exploration to prevent entropy collapse
+        )
 
     checkpoint_callback = CheckpointCallback(
         save_freq=save_freq,
@@ -136,6 +156,12 @@ if __name__ == "__main__":
                         help="Directory for TensorBoard logs")
     parser.add_argument("--model-dir", type=str, default="./models",
                         help="Directory to save models")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume training from (e.g., './models/maskable_ppo_20241218_120000/maskable_ppo_hack_100000_steps.zip')")
+    parser.add_argument("--debug", action="store_true",
+                        help="Enable verbose debug logging (Swift + Python)")
+    parser.add_argument("--info", action="store_true",
+                        help="Enable info-level logging (important events only)")
 
     args = parser.parse_args()
 
@@ -144,5 +170,8 @@ if __name__ == "__main__":
         save_freq=args.save_freq,
         eval_freq=args.eval_freq,
         log_dir=args.log_dir,
-        model_dir=args.model_dir
+        model_dir=args.model_dir,
+        resume_path=args.resume,
+        debug=args.debug,
+        info=args.info
     )

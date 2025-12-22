@@ -6,6 +6,7 @@ Communicates with Swift game via JSON over subprocess.
 import json
 import os
 import subprocess
+import sys
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
 import gymnasium as gym
@@ -21,20 +22,24 @@ class HackEnv(gym.Env):
 
     metadata = {"render_modes": []}
 
-    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False, debug_scenario: bool = False):
+    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False, debug_scenario: bool = False, debug: bool = False, info: bool = False):
         """
         Initialize the environment.
 
         Args:
             app_path: Path to the Swift executable
             visual: If True, launch GUI with animations (visual CLI mode)
-            debug_scenario: If True, use debug scenario instead of random stages
+            debug_scenario: If True, use debug scenario (fixed stage layout)
+            debug: If True, enable verbose debug logging
+            info: If True, enable info-level logging (less verbose than debug)
         """
         super().__init__()
 
         self.app_path = app_path
         self.visual = visual
         self.debug_scenario = debug_scenario
+        self.debug = debug
+        self.info = info
         self.process: Optional[subprocess.Popen] = None
 
         # Action space: 28 discrete actions (4 moves + 1 siphon + 23 programs)
@@ -84,10 +89,14 @@ class HackEnv(gym.Env):
         mode = "visual" if self.visual else "headless"
         stderr_log = open(f"/tmp/swift_{mode}.log", "w")
 
-        # Build command with optional debug scenario
+        # Build command with optional debug scenario and logging flags
         cmd = [self.app_path, flag]
         if self.debug_scenario:
             cmd.append("--debug-scenario")
+        if self.debug:
+            cmd.append("--debug")
+        elif self.info:
+            cmd.append("--info")
 
         self.process = subprocess.Popen(
             cmd,
@@ -248,6 +257,13 @@ class HackEnv(gym.Env):
         valid_actions = self.get_valid_actions()
         mask = np.zeros(self.action_space.n, dtype=np.bool_)
         mask[valid_actions] = True
+
+        # Debug logging - only when debug mode enabled and action space is restricted
+        if self.debug and len(valid_actions) < 28:
+            print(f"[HackEnv] Valid action indices from Swift: {valid_actions}", file=sys.stderr)
+            print(f"[HackEnv] Action mask created: {np.where(mask)[0].tolist()}", file=sys.stderr)
+            sys.stderr.flush()
+
         return mask
 
     def close(self):

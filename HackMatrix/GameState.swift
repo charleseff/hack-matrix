@@ -687,10 +687,10 @@ class GameState {
         }
     }
 
-    func performSiphon() -> Bool {
+    func performSiphon() -> (success: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int) {
         // Check if player has data siphons
         guard player.dataSiphons > 0 else {
-            return false
+            return (false, 0, 0, 0, 0)
         }
 
         // Get cells in siphon range (current cell + cardinal directions)
@@ -698,6 +698,12 @@ class GameState {
 
         // Mark center cell (where player is standing)
         grid.cells[player.row][player.col].siphonCenter = true
+
+        // Track what was siphoned for reward shaping
+        var blocksSiphoned = 0
+        var programsAcquired = 0
+        var creditsGained = 0
+        var energyGained = 0
 
         // Process each cell
         for cell in siphonCells {
@@ -708,6 +714,8 @@ class GameState {
 
             // Check if there's a block - if so, only process the block, NOT resources
             if case .block(let blockType) = cell.content {
+                blocksSiphoned += 1  // Track for reward shaping
+
                 switch blockType {
                 case .data(let points, let transmissionSpawn):
                     player.score += points
@@ -718,6 +726,7 @@ class GameState {
                 case .program(let program, let transmissionSpawn):
                     if !ownedPrograms.contains(program.type) {
                         ownedPrograms.append(program.type)
+                        programsAcquired += 1  // Track for reward shaping
                     }
                     pendingSiphonTransmissions += transmissionSpawn
                     // Update block to show 0 transmissions since they're being spawned
@@ -731,6 +740,7 @@ class GameState {
                     } else if let prog = program {
                         if !ownedPrograms.contains(prog.type) {
                             ownedPrograms.append(prog.type)
+                            programsAcquired += 1  // Track for reward shaping
                         }
                         // Reveal the question block as a program block (with 0 transmissions since they're being spawned)
                         cell.content = .block(.program(prog, transmissionSpawn: 0))
@@ -744,9 +754,11 @@ class GameState {
                 // No block - collect resources from empty cells
                 if case .credits(let amount) = cell.resources {
                     player.credits += amount
+                    creditsGained += amount
                     cell.resources = .none
                 } else if case .energy(let amount) = cell.resources {
                     player.energy += amount
+                    energyGained += amount
                     cell.resources = .none
                 }
             }
@@ -759,7 +771,7 @@ class GameState {
         player.dataSiphons -= 1
 
         // Don't advance turn here - let caller handle animated turn flow
-        return true
+        return (true, blocksSiphoned, programsAcquired, creditsGained, energyGained)
     }
 
     // MARK: - Program Execution
@@ -940,10 +952,11 @@ class GameState {
     /// Execute a game action - single entry point for all action processing
     /// Runs player action AND enemy turn (if applicable), returns all data for animation
     func tryExecuteAction(_ action: GameAction) -> ActionResult {
-        // Capture player position and score before action
+        // Capture player position, score, and HP before action
         let fromRow = player.row
         let fromCol = player.col
         let oldScore = player.score
+        let oldHP = player.health.rawValue
 
         var success = true
         var exitReached = false
@@ -951,6 +964,12 @@ class GameState {
         var shouldRunEnemyTurn = false
         var movedTo: (row: Int, col: Int)? = nil
         var attackedTarget: (row: Int, col: Int)? = nil
+
+        // Track for reward shaping
+        var blocksSiphoned = 0
+        var programsAcquired = 0
+        var creditsGained = 0
+        var energyGained = 0
 
         // 1. Handle player action
         switch action {
@@ -963,8 +982,14 @@ class GameState {
             shouldRunEnemyTurn = success && !exitReached
 
         case .siphon:
-            success = performSiphon()
+            let siphonResult = performSiphon()
+            success = siphonResult.success
             shouldRunEnemyTurn = success
+            // Store for reward calculation
+            blocksSiphoned = siphonResult.blocksSiphoned
+            programsAcquired = siphonResult.programsAcquired
+            creditsGained = siphonResult.creditsGained
+            energyGained = siphonResult.energyGained
 
         case .program(let programType):
             let execResult = executeProgram(programType)
@@ -1005,9 +1030,14 @@ class GameState {
         let playerDied = player.health == .dead
         let reward = calculateReward(
             oldScore: oldScore,
+            oldHP: oldHP,
             playerDied: playerDied,
             gameWon: gameWon,
-            stageAdvanced: stageAdvanced
+            stageAdvanced: stageAdvanced,
+            blocksSiphoned: blocksSiphoned,
+            programsAcquired: programsAcquired,
+            creditsGained: creditsGained,
+            energyGained: energyGained
         )
 
         return ActionResult(
@@ -1871,9 +1901,21 @@ extension GameState {
     ///   - gameWon: Whether player won the game
     ///   - stageAdvanced: Whether stage was completed
     /// - Returns: Reward value for RL training
-    func calculateReward(oldScore: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool) -> Double {
+    func calculateReward(oldScore: Int, oldHP: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int) -> Double {
         let scoreDelta = Double(player.score - oldScore)
-        var reward = scoreDelta * 0.01
+        var reward = scoreDelta * 0.1
+
+        // Reward shaping: encourage siphoning and acquiring programs
+        reward += Double(blocksSiphoned) * 0.05  // Small reward for siphoning blocks
+        reward += Double(programsAcquired) * 0.1  // Larger reward for acquiring new programs
+
+        // Reward collecting resources during siphoning
+        reward += Double(creditsGained) * 0.01  // Small reward for collecting credits
+        reward += Double(energyGained) * 0.01   // Small reward for collecting energy
+
+        // HP-based rewards: encourage avoiding damage and valuing HP
+        let hpChange = player.health.rawValue - oldHP
+        reward += Double(hpChange) * 2.0  // -2 for taking damage, +2 for healing
 
         // Terminal state rewards
         if playerDied {
@@ -1884,7 +1926,11 @@ extension GameState {
             reward = Double(player.score) * 10.0 + 10
         } else if stageAdvanced {
             // Completing a non-final stage gives bonus reward
-            reward += 0.01
+            reward += 1
+
+            // Resource conservation bonus: encourage keeping resources for later stages
+            let resourceBonus = Double(player.credits + player.energy) * 0.02
+            reward += resourceBonus
         }
 
         return reward
