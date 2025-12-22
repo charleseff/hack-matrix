@@ -532,30 +532,6 @@ class GameState {
         saveSnapshot()
     }
 
-    // For animated enemy movement - processes one step at a time
-    func executeEnemyStep(step: Int, enemiesWhoAttacked: inout Set<UUID>) -> Bool {
-        let maxSteps = enemies.map { $0.type.moveSpeed }.max() ?? 1
-
-        guard step < maxSteps else { return false }
-
-        // First check for attacks this step
-        for enemy in enemies {
-            guard !enemy.isDisabled && !enemy.isStunned else { continue }
-            guard !enemiesWhoAttacked.contains(enemy.id) else { continue }
-            guard step < enemy.type.moveSpeed else { continue }
-
-            if isAdjacentToPlayer(enemy) {
-                player.health.takeDamage()
-                enemiesWhoAttacked.insert(enemy.id)
-            }
-        }
-
-        // Then move enemies who didn't attack
-        moveEnemiesSimultaneously(step: step, enemiesWhoAttacked: enemiesWhoAttacked)
-
-        return step + 1 < maxSteps
-    }
-
     func getMaxEnemySteps() -> Int {
         return enemies.map { $0.type.moveSpeed }.max() ?? 1
     }
