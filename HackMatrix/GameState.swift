@@ -54,6 +54,10 @@ class GameState {
     var pendingSiphonTransmissions: Int
     var atkPlusUsedThisStage: Bool
 
+    // Kill tracking for current action (excludes scheduled task spawns)
+    private var currentActionEnemiesKilled: Int = 0
+    private var currentActionTransmissionsKilled: Int = 0
+
     init() {
         self.grid = Grid()
         self.currentStage = 1
@@ -393,15 +397,15 @@ class GameState {
         }
     }
 
-    func spawnRandomTransmissions(count: Int) {
+    func spawnRandomTransmissions(count: Int, isFromScheduledTask: Bool = false) {
         for _ in 0..<count {
             // First try to find a cell out of player's line of fire
             if let pos = findEmptyCellOutOfLineOfFire() {
-                let transmission = Transmission(row: pos.0, col: pos.1)
+                let transmission = Transmission(row: pos.0, col: pos.1, isFromScheduledTask: isFromScheduledTask)
                 transmissions.append(transmission)
             } else if let pos = findEmptyCell() {
                 // Fallback: spawn in any empty cell (even in line of fire)
-                let transmission = Transmission(row: pos.0, col: pos.1)
+                let transmission = Transmission(row: pos.0, col: pos.1, isFromScheduledTask: isFromScheduledTask)
                 transmissions.append(transmission)
             }
         }
@@ -490,7 +494,7 @@ class GameState {
 
         let interval = Constants.scheduledTaskIntervals[currentStage - 1]
         if turnCount > 0 && turnCount % interval == 0 {
-            spawnRandomTransmissions(count: 1)
+            spawnRandomTransmissions(count: 1, isFromScheduledTask: true)
         }
     }
 
@@ -952,6 +956,10 @@ class GameState {
     /// Execute a game action - single entry point for all action processing
     /// Runs player action AND enemy turn (if applicable), returns all data for animation
     func tryExecuteAction(_ action: GameAction) -> ActionResult {
+        // Reset kill counters for this action
+        currentActionEnemiesKilled = 0
+        currentActionTransmissionsKilled = 0
+
         // Capture player position, score, and HP before action
         let fromRow = player.row
         let fromCol = player.col
@@ -1028,6 +1036,7 @@ class GameState {
 
         // 4. Calculate reward and return everything
         let playerDied = player.health == .dead
+        let totalKills = currentActionEnemiesKilled + currentActionTransmissionsKilled
         let reward = calculateReward(
             oldScore: oldScore,
             oldHP: oldHP,
@@ -1037,7 +1046,8 @@ class GameState {
             blocksSiphoned: blocksSiphoned,
             programsAcquired: programsAcquired,
             creditsGained: creditsGained,
-            energyGained: energyGained
+            energyGained: energyGained,
+            totalKills: totalKills
         )
 
         return ActionResult(
@@ -1185,7 +1195,7 @@ class GameState {
                 affectedPositions.append((daemonRow, daemonCol))
 
                 // Remove the daemon
-                enemies.removeAll { $0.id == nearestDaemon.id }
+                removeEnemy(where: { $0.id == nearestDaemon.id })
 
                 // Damage and stun enemies in 8 surrounding cells
                 for rowOffset in -1...1 {
@@ -1205,7 +1215,7 @@ class GameState {
                 }
 
                 // Remove dead enemies
-                enemies.removeAll { $0.hp <= 0 }
+                removeDeadEnemies()
             }
 
         case .antiV:
@@ -1217,7 +1227,7 @@ class GameState {
                     enemy.isStunned = true
                 }
             }
-            enemies.removeAll { $0.hp <= 0 }
+            removeDeadEnemies()
 
         case .delay:
             // Extend transmissions +3 turns
@@ -1285,7 +1295,7 @@ class GameState {
                     enemy.isStunned = true
                 }
             }
-            enemies.removeAll { $0.hp <= 0 }
+            removeDeadEnemies()
 
         case .col:
             // Attack all enemies in player's column
@@ -1296,7 +1306,7 @@ class GameState {
                     enemy.isStunned = true
                 }
             }
-            enemies.removeAll { $0.hp <= 0 }
+            removeDeadEnemies()
 
         case .debug:
             // Damage enemies standing on blocks
@@ -1307,7 +1317,7 @@ class GameState {
                     enemy.isStunned = true
                 }
             }
-            enemies.removeAll { $0.hp <= 0 }
+            removeDeadEnemies()
 
         case .hack:
             // Damage enemies on siphoned cells and show explosions on all siphoned cells
@@ -1327,7 +1337,7 @@ class GameState {
                     enemy.isStunned = true
                 }
             }
-            enemies.removeAll { $0.hp <= 0 }
+            removeDeadEnemies()
 
         case .push:
             // Push all enemies one cell away from player
@@ -1480,10 +1490,10 @@ class GameState {
                         }
 
                         // Destroy enemies at this position
-                        enemies.removeAll { $0.row == checkRow && $0.col == checkCol }
+                        removeEnemy(where: { $0.row == checkRow && $0.col == checkCol })
 
                         // Destroy transmissions at this position
-                        transmissions.removeAll { $0.row == checkRow && $0.col == checkCol }
+                        removeTransmission(where: { $0.row == checkRow && $0.col == checkCol })
                     }
                 }
             }
@@ -1508,9 +1518,9 @@ class GameState {
 
                 // Destroy the target
                 if target.isEnemy {
-                    enemies.removeAll { $0.row == target.row && $0.col == target.col }
+                    removeEnemy(where: { $0.row == target.row && $0.col == target.col })
                 } else {
-                    transmissions.removeAll { $0.row == target.row && $0.col == target.col }
+                    removeTransmission(where: { $0.row == target.row && $0.col == target.col })
                 }
             }
 
@@ -1723,7 +1733,7 @@ class GameState {
         if let transmission = targetResult.transmission {
             // Destroy the transmission (1 HP)
             let targetPos = (transmission.row, transmission.col)
-            transmissions.removeAll { $0.id == transmission.id }
+            removeTransmission(where: { $0.id == transmission.id })
             return (true, false, nil, targetPos)
         }
 
@@ -1737,7 +1747,7 @@ class GameState {
                 enemy.isStunned = true
             } else {
                 // Remove dead enemy
-                enemies.removeAll { $0.id == enemy.id }
+                removeEnemy(where: { $0.id == enemy.id })
             }
             return (true, false, nil, targetPos)
         }
@@ -1901,7 +1911,7 @@ extension GameState {
     ///   - gameWon: Whether player won the game
     ///   - stageAdvanced: Whether stage was completed
     /// - Returns: Reward value for RL training
-    func calculateReward(oldScore: Int, oldHP: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int) -> Double {
+    func calculateReward(oldScore: Int, oldHP: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int, totalKills: Int) -> Double {
         let scoreDelta = Double(player.score - oldScore)
         var reward = scoreDelta * 0.1
 
@@ -1912,6 +1922,9 @@ extension GameState {
         // Reward collecting resources during siphoning
         reward += Double(creditsGained) * 0.01  // Small reward for collecting credits
         reward += Double(energyGained) * 0.01   // Small reward for collecting energy
+
+        // Kill rewards: encourage eliminating threats (excludes scheduled task spawns)
+        reward += Double(totalKills) * 0.2  // Enemies + transmissions killed
 
         // HP-based rewards: encourage avoiding damage and valuing HP
         let hpChange = player.health.rawValue - oldHP
@@ -1934,5 +1947,38 @@ extension GameState {
         }
 
         return reward
+    }
+
+    // MARK: - Kill Tracking Helpers
+
+    /// Remove dead enemies and track kills (excludes scheduled task spawns)
+    func removeDeadEnemies() {
+        let deadEnemies = enemies.filter { $0.hp <= 0 }
+        for enemy in deadEnemies {
+            if !enemy.isFromScheduledTask {
+                currentActionEnemiesKilled += 1
+            }
+        }
+        removeDeadEnemies()
+    }
+
+    /// Remove specific enemy and track kill (excludes scheduled task spawns)
+    func removeEnemy(where predicate: (Enemy) -> Bool) {
+        if let enemy = enemies.first(where: predicate) {
+            if !enemy.isFromScheduledTask {
+                currentActionEnemiesKilled += 1
+            }
+        }
+        enemies.removeAll(where: predicate)
+    }
+
+    /// Remove specific transmission and track kill (excludes scheduled task spawns)
+    func removeTransmission(where predicate: (Transmission) -> Bool) {
+        if let transmission = transmissions.first(where: predicate) {
+            if !transmission.isFromScheduledTask {
+                currentActionTransmissionsKilled += 1
+            }
+        }
+        transmissions.removeAll(where: predicate)
     }
 }

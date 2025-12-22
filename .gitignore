@@ -15,3 +15,6 @@ python/__pycache__/
 # ML training artifacts
 python/logs/
 python/models/
+old_training_incomplete_obs/
+logs/
+models/

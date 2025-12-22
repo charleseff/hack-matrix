@@ -8,8 +8,8 @@
 
 - **Always use Xcode build**, NOT `swift build`
 - Build command: `xcodebuild -scheme HackMatrix -configuration Debug`
-- Output location: `DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix`
-- Python expects the executable at the DerivedData location
+- Output location: `DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix`
+- Python expects the executable at this location (Xcode default)
 
 ### Git Workflow
 

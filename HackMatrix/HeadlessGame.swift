@@ -28,7 +28,10 @@ class HeadlessGame {
         let result = gameState.tryExecuteAction(action)
 
         if !result.success {
+            // Invalid action - terminate episode to prevent infinite loops
             info["invalid_action"] = true
+            isDone = true
+            infoLog("HeadlessGame", "❌ Invalid action \(action) attempted - terminating episode")
         }
 
         if result.stageAdvanced {
@@ -42,12 +45,28 @@ class HeadlessGame {
         }
 
         let observation = ObservationBuilder.build(from: gameState)
+
+        if result.stageAdvanced {
+            infoLog(
+                "Stage advanced. Step \(String(describing: action)) -> reward: \(String(format: "%.3f", result.reward)), done: \(isDone), stage: \(observation.stage), credits: \(gameState.player.credits), energy: \(gameState.player.energy)"
+            )
+        } else {
+            debugLog(
+                "Step \(String(describing: action)) -> reward: \(String(format: "%.3f", result.reward)), done: \(isDone), stage: \(observation.stage), credits: \(gameState.player.credits), energy: \(gameState.player.energy)"
+            )
+        }
+
         return (observation, result.reward, isDone, info)
     }
 
     // Get valid actions based on current state
     func getValidActions() -> [GameAction] {
-        return gameState.getValidActions()
+        let actions = gameState.getValidActions()
+        let indices = actions.map { $0.toIndex() }
+        debugLog(
+            "HeadlessGame",
+            "Valid actions: \(actions.map { String(describing: $0) }) → indices: \(indices)")
+        return actions
     }
 
 }

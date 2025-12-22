@@ -9,7 +9,8 @@
       "Bash(readlink:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "mcp__linear-server__create_issue"
+      "mcp__linear-server__create_issue",
+      "mcp__linear-server__list_issues"
     ]
   }
 }

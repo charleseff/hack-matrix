@@ -734,6 +734,9 @@ override func mouseDown(with event: NSEvent) {
         let result = gameState.tryExecuteAction(action)
         guard result.success else { return }
 
+        // Log reward for manual testing/debugging
+        print("🎯 Action: \(action) → Reward: \(String(format: "%.3f", result.reward)) | Score: \(gameState.player.score) | Stage: \(gameState.currentStage)")
+
         if result.gameWon {
             animateActionResult(result) { [weak self] in
                 self?.showVictory()

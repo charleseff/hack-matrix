@@ -53,8 +53,9 @@ class Enemy {
     var isStunned: Bool
     var lastKnownRow: Int?  // For Cryptog tracking
     var lastKnownCol: Int?
+    let isFromScheduledTask: Bool  // Track if spawned from scheduled task (no reward for killing)
 
-    init(type: EnemyType, row: Int, col: Int) {
+    init(type: EnemyType, row: Int, col: Int, isFromScheduledTask: Bool = false) {
         self.id = UUID()
         self.type = type
         self.row = row
@@ -62,6 +63,7 @@ class Enemy {
         self.hp = type.maxHP
         self.disabledTurns = 0
         self.isStunned = false
+        self.isFromScheduledTask = isFromScheduledTask
 
         // Initialize last known position for Cryptogs (visible as transmission before spawning)
         if type == .cryptog {
@@ -109,20 +111,22 @@ class Transmission {
     var col: Int
     var state: TransmissionState
     let enemyType: EnemyType  // Store enemy type from creation (for show program)
+    let isFromScheduledTask: Bool  // Track if spawned from scheduled task (no reward for killing)
 
-    init(row: Int, col: Int, turnsUntilSpawn: Int = 1, enemyType: EnemyType? = nil) {
+    init(row: Int, col: Int, turnsUntilSpawn: Int = 1, enemyType: EnemyType? = nil, isFromScheduledTask: Bool = false) {
         self.id = UUID()
         self.row = row
         self.col = col
         self.state = .spawning(turnsRemaining: turnsUntilSpawn)
         self.enemyType = enemyType ?? EnemyType.allCases.randomElement()!
+        self.isFromScheduledTask = isFromScheduledTask
     }
 
     func decrementTimer() -> Enemy? {
         if case .spawning(let turns) = state {
             if turns <= 1 {
                 // Spawn enemy using the predetermined type
-                let enemy = Enemy(type: enemyType, row: row, col: col)
+                let enemy = Enemy(type: enemyType, row: row, col: col, isFromScheduledTask: isFromScheduledTask)
                 enemy.disabledTurns = 1  // Disable for spawn turn
                 state = .spawned(enemy)
                 return enemy

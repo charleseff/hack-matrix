@@ -9,7 +9,6 @@
         "-project", "${workspaceFolder}/HackMatrix.xcodeproj",
         "-scheme", "HackMatrix",
         "-configuration", "Debug",
-        "-derivedDataPath", "${workspaceFolder}/DerivedData",
         "clean", "build"
       ],
       "group": {
@@ -22,7 +21,7 @@
       "label": "Run GUI",
       "type": "shell",
       "command": "open",
-      "args": ["${workspaceFolder}/DerivedData/Build/Products/Debug/HackMatrix.app"],
+      "args": ["${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app"],
       "dependsOn": "Build HackMatrix",
       "problemMatcher": [],
       "presentation": {
