@@ -580,93 +580,6 @@ class GameState {
         return positions
     }
 
-    func moveEnemiesSimultaneously(step: Int, enemiesWhoAttacked: Set<UUID>) {
-        // Filter to enemies that should move this step
-        let enemiesToMove = enemies.filter { enemy in
-            !enemy.isDisabled &&
-            !enemy.isStunned &&
-            !enemiesWhoAttacked.contains(enemy.id) &&
-            step < enemy.type.moveSpeed &&
-            !isAdjacentToPlayer(enemy)
-        }
-
-        var desiredMoves: [(enemy: Enemy, target: (row: Int, col: Int))] = []
-        let allEnemyPositions = getOccupiedPositions(for: nil)
-
-        for enemy in enemiesToMove {
-            let otherEnemyPositions = getOccupiedPositions(for: enemy)
-
-            if let nextMove = Pathfinding.findNextMove(
-                from: (enemy.row, enemy.col),
-                to: (player.row, player.col),
-                grid: grid,
-                canMoveOnBlocks: enemy.type.canMoveOnBlocks,
-                occupiedPositions: otherEnemyPositions
-            ) {
-                desiredMoves.append((enemy, nextMove))
-            } else {
-                // Pathfinding failed - try to move towards player anyway
-                // Find the adjacent cell that's closest to the player
-                var bestMove: (row: Int, col: Int)?
-                var bestDistance = Int.max
-
-                for direction in Direction.allCases {
-                    let offset = direction.offset
-                    let newRow = enemy.row + offset.row
-                    let newCol = enemy.col + offset.col
-
-                    guard grid.isValidPosition(row: newRow, col: newCol) else { continue }
-
-                    let cell = grid.cells[newRow][newCol]
-                    if cell.hasBlock && !enemy.type.canMoveOnBlocks { continue }
-
-                    let posKey = "\(newRow),\(newCol)"
-                    if otherEnemyPositions.contains(posKey) { continue }
-
-                    let distance = abs(player.row - newRow) + abs(player.col - newCol)
-                    if distance < bestDistance {
-                        bestDistance = distance
-                        bestMove = (newRow, newCol)
-                    }
-                }
-
-                if let move = bestMove {
-                    desiredMoves.append((enemy, move))
-                }
-            }
-        }
-
-        var targetOccupied = Set<String>()
-
-        for (enemy, optimalTarget) in desiredMoves {
-            var target = optimalTarget
-            let targetKey = "\(target.row),\(target.col)"
-
-            if targetOccupied.contains(targetKey) {
-                if let alternative = findAlternativeMove(enemy: enemy, occupiedTargets: targetOccupied, allEnemyPositions: allEnemyPositions) {
-                    target = alternative
-                } else {
-                    continue
-                }
-            }
-
-            if target.row != enemy.row || target.col != enemy.col {
-                enemy.row = target.row
-                enemy.col = target.col
-                targetOccupied.insert("\(target.row),\(target.col)")
-
-                // Update last known position only when Cryptog is visible
-                if enemy.type == .cryptog {
-                    let isVisible = enemy.row == player.row || enemy.col == player.col
-                    if isVisible {
-                        enemy.lastKnownRow = enemy.row
-                        enemy.lastKnownCol = enemy.col
-                    }
-                }
-            }
-        }
-    }
-
     func performSiphon() -> (success: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int) {
         // Check if player has data siphons
         guard player.dataSiphons > 0 else {
@@ -1086,34 +999,82 @@ class GameState {
             return EnemyStepResult(step: step, movements: [], attacks: [])
         }
 
-        // First check for attacks this step
-        for enemy in enemies {
+        // Randomly shuffle enemy order for sequential processing
+        let shuffledEnemies = enemies.shuffled()
+
+        // Process each enemy sequentially
+        for enemy in shuffledEnemies {
             guard !enemy.isDisabled && !enemy.isStunned else { continue }
             guard !enemiesWhoAttacked.contains(enemy.id) else { continue }
             guard step < enemy.type.moveSpeed else { continue }
 
+            let originalRow = enemy.row
+            let originalCol = enemy.col
+
+            // Check if adjacent to player - if so, attack
             if isAdjacentToPlayer(enemy) {
                 player.health.takeDamage()
                 enemiesWhoAttacked.insert(enemy.id)
                 attacks.append((enemyId: enemy.id, damage: 1))
-            }
-        }
+            } else {
+                // Not adjacent - try to move towards player
+                let occupiedPositions = getOccupiedPositions(for: enemy)
 
-        // Capture positions before movement
-        var positionsBefore: [UUID: (row: Int, col: Int)] = [:]
-        for enemy in enemies {
-            positionsBefore[enemy.id] = (enemy.row, enemy.col)
-        }
+                if let nextMove = Pathfinding.findNextMove(
+                    from: (enemy.row, enemy.col),
+                    to: (player.row, player.col),
+                    grid: grid,
+                    canMoveOnBlocks: enemy.type.canMoveOnBlocks,
+                    occupiedPositions: occupiedPositions
+                ) {
+                    // Move the enemy immediately
+                    enemy.row = nextMove.row
+                    enemy.col = nextMove.col
+                } else {
+                    // Pathfinding failed - try to move towards player anyway
+                    // Find the adjacent cell that's closest to the player
+                    var bestMove: (row: Int, col: Int)?
+                    var bestDistance = Int.max
 
-        // Move enemies who didn't attack (reusing existing simultaneous movement logic)
-        moveEnemiesSimultaneously(step: step, enemiesWhoAttacked: enemiesWhoAttacked)
+                    for direction in Direction.allCases {
+                        let offset = direction.offset
+                        let newRow = enemy.row + offset.row
+                        let newCol = enemy.col + offset.col
 
-        // Capture movements by comparing before/after positions
-        for enemy in enemies {
-            if let before = positionsBefore[enemy.id] {
-                if enemy.row != before.row || enemy.col != before.col {
-                    movements.append((enemyId: enemy.id, fromRow: before.row, fromCol: before.col, toRow: enemy.row, toCol: enemy.col))
+                        guard grid.isValidPosition(row: newRow, col: newCol) else { continue }
+
+                        let cell = grid.cells[newRow][newCol]
+                        if cell.hasBlock && !enemy.type.canMoveOnBlocks { continue }
+
+                        let posKey = "\(newRow),\(newCol)"
+                        if occupiedPositions.contains(posKey) { continue }
+
+                        let distance = abs(player.row - newRow) + abs(player.col - newCol)
+                        if distance < bestDistance {
+                            bestDistance = distance
+                            bestMove = (newRow, newCol)
+                        }
+                    }
+
+                    if let move = bestMove {
+                        enemy.row = move.row
+                        enemy.col = move.col
+                    }
                 }
+
+                // Update Cryptog last known position if moved and now visible
+                if enemy.type == .cryptog && (enemy.row != originalRow || enemy.col != originalCol) {
+                    let isVisible = enemy.row == player.row || enemy.col == player.col
+                    if isVisible {
+                        enemy.lastKnownRow = enemy.row
+                        enemy.lastKnownCol = enemy.col
+                    }
+                }
+            }
+
+            // Record movement if position changed
+            if enemy.row != originalRow || enemy.col != originalCol {
+                movements.append((enemyId: enemy.id, fromRow: originalRow, fromCol: originalCol, toRow: enemy.row, toCol: enemy.col))
             }
         }
 
@@ -1639,30 +1600,6 @@ class GameState {
         atkPlusUsedThisStage = snapshot.atkPlusUsedThisStage
 
         return true
-    }
-
-    func findAlternativeMove(enemy: Enemy, occupiedTargets: Set<String>, allEnemyPositions: Set<String>) -> (Int, Int)? {
-        var candidates: [(pos: (Int, Int), dist: Int)] = []
-
-        for direction in Direction.allCases {
-            let offset = direction.offset
-            let newRow = enemy.row + offset.row
-            let newCol = enemy.col + offset.col
-
-            guard grid.isValidPosition(row: newRow, col: newCol) else { continue }
-
-            let cell = grid.cells[newRow][newCol]
-            if cell.hasBlock && !enemy.type.canMoveOnBlocks { continue }
-
-            let posKey = "\(newRow),\(newCol)"
-            if occupiedTargets.contains(posKey) { continue }
-            if allEnemyPositions.contains(posKey) { continue }
-
-            let dist = abs(player.row - newRow) + abs(player.col - newCol)
-            candidates.append(((newRow, newCol), dist))
-        }
-
-        return candidates.min(by: { $0.dist < $1.dist })?.pos
     }
 
     // MARK: - Player Action Methods (Pure Game Logic)
