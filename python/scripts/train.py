@@ -8,7 +8,8 @@ import numpy as np
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
-from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv
 
@@ -46,10 +47,20 @@ def train(
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_log_dir = os.path.join(log_dir, f"maskable_ppo_{timestamp}")
-    run_model_dir = os.path.join(model_dir, f"maskable_ppo_{timestamp}")
-    os.makedirs(run_model_dir, exist_ok=True)
+    # When resuming, reuse the existing run directory to keep TensorBoard graphs continuous
+    if resume_path:
+        # Extract run directory from resume path (e.g., models/maskable_ppo_20241223_120000/checkpoint.zip)
+        resume_dir = os.path.dirname(resume_path)
+        run_name = os.path.basename(resume_dir)
+        run_log_dir = os.path.join(log_dir, run_name)
+        run_model_dir = resume_dir
+        print(f"Resuming run: {run_name}")
+    else:
+        # New run - create timestamped directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_log_dir = os.path.join(log_dir, f"maskable_ppo_{timestamp}")
+        run_model_dir = os.path.join(model_dir, f"maskable_ppo_{timestamp}")
+        os.makedirs(run_model_dir, exist_ok=True)
 
     if debug:
         print("⚠️  Debug mode: ENABLED (verbose logging)")
@@ -103,14 +114,15 @@ def train(
         save_vecnormalize=False
     )
 
-    eval_callback = EvalCallback(
+    eval_callback = MaskableEvalCallback(
         eval_env,
         best_model_save_path=run_model_dir,
         log_path=run_log_dir,
         eval_freq=eval_freq,
         deterministic=True,
         render=False,
-        n_eval_episodes=5
+        n_eval_episodes=5,
+        use_masking=True  # Enable action masking during evaluation
     )
 
     print(f"\nStarting training for {total_timesteps:,} timesteps...")

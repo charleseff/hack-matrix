@@ -36,6 +36,11 @@ class HeadlessGame {
 
         if result.stageAdvanced {
             isDone = result.gameWon
+            if isDone {
+                infoLog(
+                    "Completed the game! With points: \(gameState.player.score)")
+            }
+
             info["stage_complete"] = true
         }
 

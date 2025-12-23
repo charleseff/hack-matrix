@@ -14,7 +14,7 @@ from gymnasium import spaces
 
 # Default app path relative to this file (Xcode default location)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "DerivedData", "HackMatrix", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
+_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "..", "DerivedData", "HackMatrix", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
 
 
 class HackEnv(gym.Env):
