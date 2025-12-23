@@ -18,7 +18,7 @@ def print_action_menu():
     """Print available actions."""
     print("\n" + "="*70)
     print("ACTIONS:")
-    print("  0-3: Move (0=Up, 1=Down, 2=Left, 3=Right)")
+    print("  W/A/S/D or 0-3: Move (W=Up, S=Down, A=Left, D=Right)")
     print("  4: Siphon")
     print("  5-30: Programs (check owned programs in output)")
     print()
@@ -26,6 +26,20 @@ def print_action_menu():
     print("  v: Show valid actions")
     print("  q: Quit")
     print("="*70)
+
+
+def print_valid_actions(valid_actions):
+    """Print valid actions in a readable format."""
+    action_names = {
+        0: "Up(W)", 1: "Down(S)", 2: "Left(A)", 3: "Right(D)", 4: "Siphon"
+    }
+    # Add program names for 5-30
+    for i in range(5, 31):
+        action_names[i] = f"Prog{i}"
+
+    valid_names = [action_names.get(a, f"Action{a}") for a in valid_actions]
+    print(f"\nValid actions: {', '.join(valid_names)}")
+    print(f"Indices: {valid_actions}")
 
 
 def main():
@@ -50,8 +64,9 @@ def main():
     step_count = 0
 
     while True:
-        # Get valid actions
+        # Get valid actions and display them
         valid_actions = env.get_valid_actions()
+        print_valid_actions(valid_actions)
 
         # Get user input
         try:
@@ -62,18 +77,23 @@ def main():
                 break
 
             if user_input == 'v':
-                print(f"Valid actions: {valid_actions}")
+                print_valid_actions(valid_actions)
                 continue
 
             if user_input == '':
                 continue
 
-            # Parse action
-            try:
-                action = int(user_input)
-            except ValueError:
-                print(f"Invalid input: '{user_input}'. Enter a number, 'v', or 'q'.")
-                continue
+            # Parse action - support WASD shortcuts
+            wasd_map = {'w': 0, 's': 1, 'a': 2, 'd': 3}
+            if user_input in wasd_map:
+                action = wasd_map[user_input]
+            else:
+                # Try to parse as number
+                try:
+                    action = int(user_input)
+                except ValueError:
+                    print(f"Invalid input: '{user_input}'. Use W/A/S/D, numbers 0-30, 'v', or 'q'.")
+                    continue
 
             # Validate action
             if action not in valid_actions:
