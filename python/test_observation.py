@@ -4,6 +4,7 @@ Test script to inspect observation structure and verify all game state is captur
 
 from hack_env import HackEnv
 import json
+import numpy as np
 
 # Create environment
 env = HackEnv(debug_scenario=True)
@@ -38,24 +39,45 @@ for row_idx, row in enumerate(response["observation"]["cells"]):
 print("\n" + "=" * 80)
 print("PYTHON NUMPY OBSERVATION SHAPE:")
 print("=" * 80)
-print(f"player: {obs['player'].shape} = {obs['player']}")
-print(f"grid: {obs['grid'].shape}")
-print(f"flags: {obs['flags'].shape}")
+print(f"player: {obs['player'].shape} (dtype={obs['player'].dtype}) = {obs['player']}")
+print(f"  Player values in [0,1]: {obs['player'].min():.3f} to {obs['player'].max():.3f}")
+print(f"programs: {obs['programs'].shape} (dtype={obs['programs'].dtype})")
+print(f"  Owned programs (action indices): {list(np.where(obs['programs'] == 1)[0] + 5)}")
+print(f"grid: {obs['grid'].shape} (dtype={obs['grid'].dtype})")
+print(f"  Grid values in [0,1]: {obs['grid'].min():.3f} to {obs['grid'].max():.3f}")
 
-# Check if programType is being encoded
+# Check grid features with new one-hot encoding
 print("\n" + "=" * 80)
-print("SAMPLE GRID FEATURES FOR CELLS WITH BLOCKS:")
+print("SAMPLE GRID FEATURES (NEW ONE-HOT ENCODING):")
 print("=" * 80)
 for row_idx in range(6):
     for col_idx in range(6):
         cell_features = obs['grid'][row_idx, col_idx, :]
-        # Check if this cell has a block (feature index 3)
-        if cell_features[3] != 0:  # block_type != 0
-            print(f"\nCell ({row_idx}, {col_idx}) grid features:")
-            print(f"  Features 0-2 (enemy): {cell_features[0:3]}")
-            print(f"  Features 3-5 (block): {cell_features[3:6]}")
-            print(f"  Features 6 (transmission): {cell_features[6]}")
-            print(f"  Features 7-8 (resources): {cell_features[7:9]}")
-            print(f"  Features 9-10 (special): {cell_features[9:11]}")
+
+        # Check if this cell has any interesting features
+        has_enemy = np.any(cell_features[0:4] > 0)
+        has_block = np.any(cell_features[6:9] > 0)
+        has_program = np.any(cell_features[11:37] > 0)
+        has_transmission = cell_features[37] > 0 or cell_features[38] > 0
+
+        if has_enemy or has_block or has_program or has_transmission:
+            print(f"\nCell ({row_idx}, {col_idx}) grid features (43 total):")
+            print(f"  Enemy one-hot [0-3]: {cell_features[0:4]} (virus, daemon, glitch, cryptog)")
+            print(f"  Enemy hp [4]: {cell_features[4]:.3f}")
+            print(f"  Enemy stunned [5]: {cell_features[5]:.0f}")
+            print(f"  Block one-hot [6-8]: {cell_features[6:9]} (data, program, question)")
+            print(f"  Block points [9]: {cell_features[9]:.3f}")
+            print(f"  Block siphoned [10]: {cell_features[10]:.0f}")
+            if has_program:
+                prog_idx = np.where(cell_features[11:37] > 0)[0]
+                if len(prog_idx) > 0:
+                    action_idx = prog_idx[0] + 5
+                    print(f"  Program one-hot [11-36]: action index {action_idx}")
+            print(f"  Transmission spawncount [37]: {cell_features[37]:.3f}")
+            print(f"  Transmission turns [38]: {cell_features[38]:.3f}")
+            print(f"  Credits [39]: {cell_features[39]:.3f}")
+            print(f"  Energy [40]: {cell_features[40]:.3f}")
+            print(f"  Is data siphon [41]: {cell_features[41]:.0f}")
+            print(f"  Is exit [42]: {cell_features[42]:.0f}")
 
 env.close()

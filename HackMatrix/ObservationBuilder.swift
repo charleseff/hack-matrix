@@ -20,6 +20,9 @@ class ObservationBuilder {
             cells.append(rowCells)
         }
 
+        // Extract owned program action indices
+        let ownedPrograms = gameState.ownedPrograms.map { $0.actionIndex }
+
         return GameObservation(
             playerRow: gameState.player.row,
             playerCol: gameState.player.col,
@@ -33,7 +36,9 @@ class ObservationBuilder {
             score: gameState.player.score,
             cells: cells,
             cryptogHints: cryptogHints,
-            showActivated: gameState.showActivated
+            showActivated: gameState.showActivated,
+            scheduledTasksDisabled: gameState.scheduledTasksDisabled,
+            ownedPrograms: ownedPrograms
         )
     }
 

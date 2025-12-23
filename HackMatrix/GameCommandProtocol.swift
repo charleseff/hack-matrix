@@ -98,6 +98,8 @@ class StdinCommandReader {
             "baseAttack": obs.baseAttack,
             "score": obs.score,
             "showActivated": obs.showActivated,
+            "scheduledTasksDisabled": obs.scheduledTasksDisabled,
+            "ownedPrograms": obs.ownedPrograms
         ]
 
         // Encode cells as nested arrays

@@ -48,30 +48,35 @@ class HackEnv(gym.Env):
         # Observation space: Multi-part observation
         # We'll use a Dict space with the main components
         self.observation_space = spaces.Dict({
-            # Player state (10 values)
+            # Player state (10 values, normalized to [0, 1])
+            # [row, col, hp, credits, energy, stage, siphons, attack, showActivated, scheduledTasksDisabled]
             "player": spaces.Box(
-                low=np.array([0, 0, 0, 0, 0, 1, 0, 0, 1, 0]),  # row, col, hp, credits, energy, stage, turn, siphons, attack, score
-                high=np.array([5, 5, 3, 999, 999, 8, 9999, 99, 2, 9999]),
+                low=0.0,
+                high=1.0,
+                shape=(10,),
+                dtype=np.float32
+            ),
+
+            # Program inventory (26 values, binary vector)
+            # Indices 0-25 correspond to program action indices 5-30
+            "programs": spaces.Box(
+                low=0,
+                high=1,
+                shape=(26,),
                 dtype=np.int32
             ),
 
-            # Grid state: 6x6x20 (20 features per cell)
-            # Features: enemy_type(1), enemy_hp(1), enemy_stunned(1),
-            #           block_type(1), block_points(1), block_siphoned(1),
-            #           program_action_index(1), transmission_spawn_count(1),
-            #           transmission_turns(1),
-            #           credits(1), energy(1), is_siphon(1), is_exit(1)
+            # Grid state: 6x6x43 (43 features per cell, normalized to [0, 1])
+            # Enemy: one-hot types (4) + hp + stunned = 6
+            # Block: one-hot types (3) + points + siphoned = 5
+            # Program: one-hot (26) + transmission_spawncount + transmission_turns = 28
+            # Resources: credits + energy = 2
+            # Special: is_data_siphon + is_exit = 2
             "grid": spaces.Box(
-                low=0, high=999,
-                shape=(6, 6, 20),
-                dtype=np.int32
-            ),
-
-            # Flags (2 values)
-            "flags": spaces.Box(
-                low=0, high=1,
-                shape=(1,),  # showActivated
-                dtype=np.int32
+                low=0.0,
+                high=1.0,
+                shape=(6, 6, 43),
+                dtype=np.float32
             )
         })
 
@@ -136,87 +141,112 @@ class HackEnv(gym.Env):
 
     def _observation_to_array(self, obs_dict: Dict[str, Any]) -> Dict[str, np.ndarray]:
         """Convert JSON observation to numpy arrays."""
-        # Player state
+        # Player state (10 values, normalized to [0, 1])
         player = np.array([
-            obs_dict["playerRow"],
-            obs_dict["playerCol"],
-            obs_dict["playerHP"],
-            obs_dict["credits"],
-            obs_dict["energy"],
-            obs_dict["stage"],
-            obs_dict["turn"],
-            obs_dict["dataSiphons"],
-            obs_dict["baseAttack"],
-            obs_dict["score"]
-        ], dtype=np.int32)
+            obs_dict["playerRow"] / 5.0,                        # 0-5 → 0-1
+            obs_dict["playerCol"] / 5.0,                        # 0-5 → 0-1
+            obs_dict["playerHP"] / 3.0,                         # 0-3 → 0-1
+            min(obs_dict["credits"] / 50.0, 1.0),               # 0-50+ → 0-1 (capped)
+            min(obs_dict["energy"] / 50.0, 1.0),                # 0-50+ → 0-1 (capped)
+            (obs_dict["stage"] - 1) / 7.0,                      # 1-8 → 0-1
+            obs_dict["dataSiphons"] / 10.0,                     # 0-10 → 0-1
+            (obs_dict["baseAttack"] - 1) / 1.0,                 # 1-2 → 0-1
+            1.0 if obs_dict.get("showActivated", False) else 0.0,          # Binary flag
+            1.0 if obs_dict.get("scheduledTasksDisabled", False) else 0.0  # Binary flag
+        ], dtype=np.float32)
 
-        # Grid state (6x6x20)
-        grid = np.zeros((6, 6, 20), dtype=np.int32)
+        # Program inventory (26 values, binary vector)
+        programs = np.zeros(26, dtype=np.int32)
+        if "ownedPrograms" in obs_dict:
+            for action_idx in obs_dict["ownedPrograms"]:
+                # Action indices 5-30 are programs
+                # Map to array indices 0-25
+                if 5 <= action_idx <= 30:
+                    programs[action_idx - 5] = 1
+
+        # Grid state (6x6x43, normalized to [0, 1])
+        grid = np.zeros((6, 6, 43), dtype=np.float32)
 
         for row_idx, row in enumerate(obs_dict["cells"]):
             for col_idx, cell in enumerate(row):
                 features = []
 
-                # Enemy features (6)
+                # Enemy features (6 features) - one-hot type encoding
                 if "enemy" in cell:
-                    enemy_types = {"virus": 0, "daemon": 1, "glitch": 2, "cryptog": 3}
                     enemy = cell["enemy"]
+                    enemy_type = enemy["type"]
+                    # One-hot encoding for enemy types
                     features.extend([
-                        enemy_types.get(enemy["type"], 0),
-                        enemy["hp"],
-                        1 if enemy["isStunned"] else 0
+                        1.0 if enemy_type == "virus" else 0.0,
+                        1.0 if enemy_type == "daemon" else 0.0,
+                        1.0 if enemy_type == "glitch" else 0.0,
+                        1.0 if enemy_type == "cryptog" else 0.0,
+                        enemy["hp"] / 3.0,  # 0-3 → 0-1
+                        1.0 if enemy["isStunned"] else 0.0
                     ])
                 else:
-                    features.extend([0, 0, 0])
+                    features.extend([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-                # Block features (5)
+                # Block features (5 features) - one-hot type encoding
                 if "block" in cell:
-                    block_types = {"data": 1, "program": 2, "question": 3}
                     block = cell["block"]
+                    block_type = block["blockType"]
+                    # One-hot encoding for block types
                     features.extend([
-                        block_types.get(block["blockType"], 0),
-                        block.get("points", 0),
-                        1 if block["isSiphoned"] else 0,
-                        block.get("programActionIndex", 0),  # Action index (5-27) from Swift, 0 if not a program
-                        block.get("transmissionSpawnCount", 0)  # Transmission spawn count
+                        1.0 if block_type == "data" else 0.0,
+                        1.0 if block_type == "program" else 0.0,
+                        1.0 if block_type == "question" else 0.0,
+                        block.get("points", 0) / 9.0,  # 0-9 → 0-1
+                        1.0 if block["isSiphoned"] else 0.0
                     ])
                 else:
-                    features.extend([0, 0, 0, 0, 0])
+                    features.extend([0.0, 0.0, 0.0, 0.0, 0.0])
 
-                # Transmission features (2)
+                # Program features (26 features) - one-hot encoding for program type
+                program_one_hot = [0.0] * 26
+                if "block" in cell:
+                    block = cell["block"]
+                    program_idx = block.get("programActionIndex", 0)
+                    # Action indices 5-30 are programs, map to array indices 0-25
+                    if 5 <= program_idx <= 30:
+                        program_one_hot[program_idx - 5] = 1.0
+                features.extend(program_one_hot)
+
+                # Transmission features (2 features)
+                transmission_spawncount = 0
+                transmission_turns = 0
+
+                if "block" in cell:
+                    block = cell["block"]
+                    transmission_spawncount = block.get("transmissionSpawnCount", 0)
+
                 if "transmission" in cell:
                     trans = cell["transmission"]
-                    features.append(trans["turnsUntilSpawn"])
-                else:
-                    features.append(0)
+                    transmission_turns = trans["turnsUntilSpawn"]
 
-                # Resources (2)
                 features.extend([
-                    cell.get("credits", 0),
-                    cell.get("energy", 0)
+                    transmission_spawncount / 9.0,               # 0-9 → 0-1
+                    min(transmission_turns / 4.0, 1.0)           # 0-4 → 0-1 (capped)
                 ])
 
-                # Special cells (2)
+                # Resources (2 features)
                 features.extend([
-                    1 if cell.get("isDataSiphon", False) else 0,
-                    1 if cell.get("isExit", False) else 0
+                    cell.get("credits", 0) / 3.0,    # 0-3 → 0-1
+                    cell.get("energy", 0) / 3.0      # 0-3 → 0-1
                 ])
 
-                # Pad to 20 features
-                while len(features) < 20:
-                    features.append(0)
+                # Special cells (2 features)
+                features.extend([
+                    1.0 if cell.get("isDataSiphon", False) else 0.0,
+                    1.0 if cell.get("isExit", False) else 0.0
+                ])
 
-                grid[row_idx, col_idx, :] = features[:20]
-
-        # Flags
-        flags = np.array([
-            1 if obs_dict["showActivated"] else 0,
-        ], dtype=np.int32)
+                grid[row_idx, col_idx, :] = features[:43]
 
         return {
             "player": player,
-            "grid": grid,
-            "flags": flags
+            "programs": programs,
+            "grid": grid
         }
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict[str, np.ndarray], Dict]:

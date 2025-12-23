@@ -19,6 +19,8 @@ struct GameObservation {
     let cryptogHints: [(row: Int, col: Int)]  // Last known positions for purple borders
 
     let showActivated: Bool
+    let scheduledTasksDisabled: Bool
+    let ownedPrograms: [Int]  // Action indices of owned programs (5-30)
 }
 
 struct CellObservation {
