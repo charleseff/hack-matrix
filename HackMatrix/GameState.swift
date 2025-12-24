@@ -58,6 +58,12 @@ class GameState {
     private var currentActionEnemiesKilled: Int = 0
     private var currentActionTransmissionsKilled: Int = 0
 
+    // Lifetime stats tracking (for debugging/logging)
+    var totalDataSiphonsCollected: Int = 0
+    var totalSiphonUses: Int = 0
+    var totalEnemiesKilled: Int = 0
+    var totalProgramUses: Int = 0
+
     init() {
         self.grid = Grid()
         self.currentStage = 1
@@ -662,6 +668,7 @@ class GameState {
 
         // Consume the data siphon
         player.dataSiphons -= 1
+        totalSiphonUses += 1
 
         // Don't advance turn here - let caller handle animated turn flow
         return (true, blocksSiphoned, programsAcquired, creditsGained, energyGained)
@@ -1099,6 +1106,7 @@ class GameState {
         // Deduct resources
         player.credits -= program.cost.credits
         player.energy -= program.cost.energy
+        totalProgramUses += 1
 
         var affectedPositions: [(row: Int, col: Int)] = []
 
@@ -1115,6 +1123,7 @@ class GameState {
         case .siphPlus:
             // Gain 1 data siphon
             player.dataSiphons += 1
+            totalDataSiphonsCollected += 1
 
         case .reset:
             // Restore to 3HP
@@ -1686,6 +1695,7 @@ class GameState {
             var collectedSiphon = false
             if cell.hasDataSiphon {
                 player.dataSiphons += 1
+                totalDataSiphonsCollected += 1
                 cell.content = .empty
                 collectedSiphon = true
             }
@@ -1884,6 +1894,7 @@ extension GameState {
         for enemy in deadEnemies {
             if !enemy.isFromScheduledTask {
                 currentActionEnemiesKilled += 1
+                totalEnemiesKilled += 1
             }
         }
         enemies.removeAll(where: { $0.hp <= 0 })

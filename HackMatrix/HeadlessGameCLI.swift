@@ -28,9 +28,16 @@ class HeadlessGameCLI: GameCommandExecutor {
     // MARK: - GameCommandExecutor
 
     func executeReset() -> GameObservation {
+        // Log stats from previous game before resetting
+        if let oldGame = game {
+            let gs = oldGame.gameState
+            infoLog("Reset - Stage: \(gs.currentStage), Score: \(gs.player.score), Siphons Collected: \(gs.totalDataSiphonsCollected), Siphons Used: \(gs.totalSiphonUses), Enemies Killed: \(gs.totalEnemiesKilled), Programs: \(gs.ownedPrograms.count), Program Uses: \(gs.totalProgramUses)")
+        } else {
+            infoLog("Reset")
+        }
+
         game = HeadlessGame()
         let obs = game!.reset()
-        infoLog("Reset")
         return obs
     }
 
