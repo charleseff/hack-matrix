@@ -669,6 +669,7 @@ class GameState {
         // Consume the data siphon
         player.dataSiphons -= 1
         totalSiphonUses += 1
+        infoLog("GameState", "Used data siphon (total uses: \(totalSiphonUses), remaining: \(player.dataSiphons))")
 
         // Don't advance turn here - let caller handle animated turn flow
         return (true, blocksSiphoned, programsAcquired, creditsGained, energyGained)
@@ -1124,6 +1125,7 @@ class GameState {
             // Gain 1 data siphon
             player.dataSiphons += 1
             totalDataSiphonsCollected += 1
+            infoLog("GameState", "SiphPlus program gave data siphon (total collected: \(totalDataSiphonsCollected), have: \(player.dataSiphons))")
 
         case .reset:
             // Restore to 3HP
@@ -1696,6 +1698,7 @@ class GameState {
             if cell.hasDataSiphon {
                 player.dataSiphons += 1
                 totalDataSiphonsCollected += 1
+                infoLog("GameState", "Collected data siphon from cell (total collected: \(totalDataSiphonsCollected), have: \(player.dataSiphons))")
                 cell.content = .empty
                 collectedSiphon = true
             }
@@ -1848,12 +1851,12 @@ extension GameState {
         var reward = scoreDelta * 0.1
 
         // Reward shaping: encourage siphoning and acquiring programs
-        reward += Double(blocksSiphoned) * 0.1  // Small reward for siphoning blocks
-        reward += Double(programsAcquired) * 0.2  // Larger reward for acquiring new programs
+        // reward += Double(blocksSiphoned) * 0.1  // Small reward for siphoning blocks
+        // reward += Double(programsAcquired) * 0.2  // Larger reward for acquiring new programs
 
         // Reward collecting resources during siphoning
-        reward += Double(creditsGained) * 0.05  // Small reward for collecting credits
-        reward += Double(energyGained) * 0.05   // Small reward for collecting energy
+        // reward += Double(creditsGained) * 0.05  // Small reward for collecting credits
+        // reward += Double(energyGained) * 0.05   // Small reward for collecting energy
 
         // Data siphon reward: significant reward for collecting data siphons
         if dataSiphonCollected {
