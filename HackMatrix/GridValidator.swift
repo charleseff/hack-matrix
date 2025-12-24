@@ -41,6 +41,12 @@ struct GridValidator {
                 let cell = grid.cells[newRow][newCol]
                 guard !cell.hasBlock else { continue }
 
+                // Exit is reachable but don't traverse through it
+                if case .exit = cell.content {
+                    visited.insert(key)
+                    continue
+                }
+
                 visited.insert(key)
                 queue.append((newRow, newCol))
             }
