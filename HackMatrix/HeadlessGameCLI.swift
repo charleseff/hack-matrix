@@ -32,6 +32,9 @@ class HeadlessGameCLI: GameCommandExecutor {
         if let oldGame = game {
             let gs = oldGame.gameState
             infoLog("Reset - Stage: \(gs.currentStage), Score: \(gs.player.score), Siphons Collected: \(gs.totalDataSiphonsCollected), Siphons Used: \(gs.totalSiphonUses), Enemies Killed: \(gs.totalEnemiesKilled), Programs: \(gs.ownedPrograms.count), Program Uses: \(gs.totalProgramUses)")
+
+            // Explicitly clear gameHistory to help ARC free memory
+            oldGame.gameState.gameHistory.removeAll()
         } else {
             infoLog("Reset")
         }

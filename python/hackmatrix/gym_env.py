@@ -41,6 +41,7 @@ class HackEnv(gym.Env):
         self.debug = debug
         self.info = info
         self.process: Optional[subprocess.Popen] = None
+        self.stderr_log = None  # Track file handle for cleanup
 
         # Action space: 28 discrete actions (4 moves + 1 siphon + 23 programs)
         self.action_space = spaces.Discrete(28)
@@ -84,15 +85,21 @@ class HackEnv(gym.Env):
 
     def _start_process(self):
         """Start the Swift subprocess."""
+        # Close old process and file handle if they exist
         if self.process is not None:
             self.process.terminate()
             self.process.wait()
+            self.process = None
+
+        if self.stderr_log is not None:
+            self.stderr_log.close()
+            self.stderr_log = None
 
         flag = "--visual-cli" if self.visual else "--headless-cli"
 
         # Open log file for Swift stderr (debug output)
         mode = "visual" if self.visual else "headless"
-        stderr_log = open(f"/tmp/swift_{mode}.log", "w")
+        self.stderr_log = open(f"/tmp/swift_{mode}.log", "w")
 
         # Build command with optional debug scenario and logging flags
         cmd = [self.app_path, flag]
@@ -107,7 +114,7 @@ class HackEnv(gym.Env):
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=stderr_log,  # Write Swift debug output to log file
+            stderr=self.stderr_log,  # Write Swift debug output to log file
             text=True,
             bufsize=1
         )
@@ -323,6 +330,10 @@ class HackEnv(gym.Env):
             self.process.terminate()
             self.process.wait()
             self.process = None
+
+        if self.stderr_log is not None:
+            self.stderr_log.close()
+            self.stderr_log = None
 
     def __del__(self):
         """Cleanup on deletion."""
