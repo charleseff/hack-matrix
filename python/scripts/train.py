@@ -11,7 +11,7 @@ from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from hackmatrix import HackEnv
 
@@ -29,7 +29,8 @@ def train(
         model_dir: str = "./models",
         resume_path: str = None,
         debug: bool = False,
-        info: bool = False
+        info: bool = False,
+        num_envs: int = 1
 ):
     """
     Train a MaskablePPO agent with action masking.
@@ -43,6 +44,7 @@ def train(
         resume_path: Path to checkpoint to resume from
         debug: Enable verbose debug logging
         info: Enable info-level logging (less verbose)
+        num_envs: Number of parallel environments (1=single, 4-8=parallel)
     """
     os.makedirs(log_dir, exist_ok=True)
     os.makedirs(model_dir, exist_ok=True)
@@ -67,6 +69,11 @@ def train(
     elif info:
         print("ℹ️  Info mode: ENABLED (important events only)")
 
+    if num_envs > 1:
+        print(f"🚀 Parallel mode: {num_envs} environments")
+    else:
+        print("📍 Single environment mode")
+
     def make_env():
         """Create and wrap the environment."""
         env = HackEnv(debug=debug, info=info)
@@ -75,9 +82,15 @@ def train(
         return env
 
     print("Creating environment...")
-    env = DummyVecEnv([make_env])
+    if num_envs > 1:
+        # Use SubprocVecEnv for parallel environments (faster on multi-core CPUs)
+        env = SubprocVecEnv([make_env for _ in range(num_envs)])
+    else:
+        # Use DummyVecEnv for single environment (easier debugging)
+        env = DummyVecEnv([make_env])
 
     print("Creating eval environment...")
+    # Always use single environment for evaluation (deterministic)
     eval_env = DummyVecEnv([make_env])
 
     if resume_path:
@@ -106,19 +119,26 @@ def train(
             ent_coef=0.1,  # High exploration to prevent entropy collapse
         )
 
+    # Adjust save_freq for parallel environments (save_freq is per-environment)
+    # With 4 envs and save_freq=10000, we save every 10000/(4 envs) = 2500 steps per env
+    checkpoint_save_freq = max(save_freq // num_envs, 1)
+
     checkpoint_callback = CheckpointCallback(
-        save_freq=save_freq,
+        save_freq=checkpoint_save_freq,
         save_path=run_model_dir,
         name_prefix="maskable_ppo_hack",
         save_replay_buffer=False,
         save_vecnormalize=False
     )
 
+    # Adjust eval_freq for parallel environments
+    checkpoint_eval_freq = max(eval_freq // num_envs, 1)
+
     eval_callback = MaskableEvalCallback(
         eval_env,
         best_model_save_path=run_model_dir,
         log_path=run_log_dir,
-        eval_freq=eval_freq,
+        eval_freq=checkpoint_eval_freq,
         deterministic=True,
         render=False,
         n_eval_episodes=5,
@@ -160,8 +180,16 @@ def train(
         raise  # Re-raise to show full traceback
 
     finally:
-        env.close()
-        eval_env.close()
+        # Close environments gracefully (suppress errors from dead subprocesses)
+        try:
+            env.close()
+        except (BrokenPipeError, EOFError):
+            pass  # Subprocesses already dead after Ctrl-C
+
+        try:
+            eval_env.close()
+        except (BrokenPipeError, EOFError):
+            pass  # Subprocesses already dead after Ctrl-C
 
 
 if __name__ == "__main__":
@@ -184,6 +212,8 @@ if __name__ == "__main__":
                         help="Enable verbose debug logging (Swift + Python)")
     parser.add_argument("--info", action="store_true",
                         help="Enable info-level logging (important events only)")
+    parser.add_argument("--num-envs", type=int, default=1,
+                        help="Number of parallel environments (1=single, 4-8=parallel, default: 1)")
 
     args = parser.parse_args()
 
@@ -195,5 +225,6 @@ if __name__ == "__main__":
         model_dir=args.model_dir,
         resume_path=args.resume,
         debug=args.debug,
-        info=args.info
+        info=args.info,
+        num_envs=args.num_envs
     )
