@@ -4,6 +4,12 @@
 
 - **Plan files** go in `plans/` directory
 
+### Python Scripts
+
+- **Always activate venv** when running Python scripts
+- Command pattern: `cd python && source venv/bin/activate && python <script>`
+- Example: `cd python && source venv/bin/activate && python scripts/train.py`
+
 ### Building
 
 - **Always use Xcode build**, NOT `swift build`

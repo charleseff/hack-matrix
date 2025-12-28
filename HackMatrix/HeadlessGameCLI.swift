@@ -28,15 +28,21 @@ class HeadlessGameCLI: GameCommandExecutor {
     // MARK: - GameCommandExecutor
 
     func executeReset() -> GameObservation {
-        // Log stats from previous game before resetting
-        if let oldGame = game {
-            let gs = oldGame.gameState
-            infoLog("Reset - Stage: \(gs.currentStage), Score: \(gs.player.score), Siphons Collected: \(gs.totalDataSiphonsCollected), Siphons Used: \(gs.totalSiphonUses), Enemies Killed: \(gs.totalEnemiesKilled), Programs: \(gs.ownedPrograms.count), Program Uses: \(gs.totalProgramUses)")
+        // Autoreleasepool to ensure all temporary objects from old game are freed
+        autoreleasepool {
+            // Log stats from previous game before resetting
+            if let oldGame = game {
+                let gs = oldGame.gameState
+                infoLog("Reset - Stage: \(gs.currentStage), Score: \(gs.player.score), Siphons Collected: \(gs.totalDataSiphonsCollected), Siphons Used: \(gs.totalSiphonUses), Enemies Killed: \(gs.totalEnemiesKilled), Programs: \(gs.ownedPrograms.count), Program Uses: \(gs.totalProgramUses)")
 
-            // Explicitly clear gameHistory to help ARC free memory
-            oldGame.gameState.gameHistory.removeAll()
-        } else {
-            infoLog("Reset")
+                // Explicitly clear gameHistory to help ARC free memory
+                oldGame.gameState.gameHistory.removeAll()
+            } else {
+                infoLog("Reset")
+            }
+
+            // Setting game to nil first ensures old game is deallocated before new one
+            game = nil
         }
 
         game = HeadlessGame()
@@ -48,8 +54,11 @@ class HeadlessGameCLI: GameCommandExecutor {
         guard let game = game else {
             fatalError("Game not initialized")
         }
-        let (obs, reward, done, info) = game.step(actionIndex: actionIndex)
-        return (obs, reward, done, info)
+        // Autoreleasepool to drain temporary objects from game logic
+        return autoreleasepool {
+            let (obs, reward, done, info) = game.step(actionIndex: actionIndex)
+            return (obs, reward, done, info)
+        }
     }
 
     func executeGetValidActions() -> [Int] {

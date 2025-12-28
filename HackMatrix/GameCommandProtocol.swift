@@ -37,13 +37,17 @@ class StdinCommandReader {
         dup2(STDERR_FILENO, STDOUT_FILENO)
 
         while let line = readLine() {
-            guard let data = line.data(using: .utf8),
-                  let command = try? JSONDecoder().decode(Command.self, from: data) else {
-                sendError("Invalid JSON command")
-                continue
-            }
+            // Autoreleasepool drains Objective-C bridge objects from JSONSerialization
+            // Without this, memory accumulates ~1.2MB per episode during training
+            autoreleasepool {
+                guard let data = line.data(using: .utf8),
+                      let command = try? JSONDecoder().decode(Command.self, from: data) else {
+                    sendError("Invalid JSON command")
+                    return  // Exits autoreleasepool closure, continues while loop
+                }
 
-            handleCommand(command)
+                handleCommand(command)
+            }
         }
 
         // Restore stdout
