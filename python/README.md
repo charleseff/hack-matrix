@@ -91,7 +91,6 @@ The observation is a dictionary with three components:
 
 3. **Flags** (1 value):
    - `[showActivated]`
-   # todo(cff): does this need to be a flag vs just a player state?
 
 ### Action Space
 
@@ -116,3 +115,28 @@ Use `env.get_valid_actions()` to get valid actions for current state.
 - The agent will be slow at first - this is normal!
 - Expect initial training to take several hours for meaningful results
 - Use `--timesteps 10000` for quick testing
+
+## Troubleshooting Training
+
+### Training Has Stalled
+
+If your agent's performance plateaus or doesn't improve:
+
+**Key metrics to check (TensorBoard):**
+- `rollout/ep_rew_mean` - Average episode reward (should trend upward)
+- `rollout/ep_len_mean` - Episode length (longer = agent survives more)
+- `train/entropy_loss` - Exploration level (too low = stuck in local minimum)
+
+**Common issues:**
+1. **Sparse rewards** - Agent gets minimal feedback
+   - Solution: Add intermediate rewards for good behaviors (siphoning, survival, combat)
+
+2. **Entropy collapse** - Agent becomes too deterministic too quickly
+   - Solution: Increase `ent_coef` (e.g., 0.1 → 0.3) to force more exploration
+   - Can resume training with higher exploration: model will be loaded and `ent_coef` adjusted
+
+3. **Local minimum** - Agent learns suboptimal but consistent strategy
+   - Solution: Restart training with higher exploration, or add curriculum learning
+
+**References:**
+- [Reddit: How to figure out why training has stalled](https://www.reddit.com/r/reinforcementlearning/comments/17zqdej/how_to_figure_out_why_training_has_stalled/) - Comprehensive troubleshooting guide for RL training issues

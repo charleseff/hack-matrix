@@ -10,7 +10,13 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "mcp__linear-server__create_issue",
-      "mcp__linear-server__list_issues"
+      "mcp__linear-server__list_issues",
+      "Bash(xcodebuild:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "mcp__linear-server__get_issue",
+      "mcp__linear-server__list_teams",
+      "Bash(git add:*)"
     ]
   }
 }

@@ -39,11 +39,7 @@ enum GameAction: Equatable, Hashable {
     }
 }
 
-// MARK: - GameState
-
 class GameState {
-    // MARK: Properties
-
     var player: Player
     var grid: Grid
     var enemies: [Enemy]
@@ -63,8 +59,6 @@ class GameState {
     var totalSiphonUses: Int = 0
     var totalEnemiesKilled: Int = 0
     var totalProgramUses: Int = 0
-
-    // MARK: Initialization
 
     init() {
         self.grid = Grid()
@@ -204,8 +198,6 @@ class GameState {
 
         return state
     }
-
-    // MARK: - Stage Setup
 
     func initializeStage() {
         // Keep enemies and transmissions (they persist across stages)
@@ -504,8 +496,6 @@ class GameState {
         }
     }
 
-    // MARK: - Enemy & Transmission Management
-
     func maybeExecuteScheduledTask() {
         guard !scheduledTasksDisabled else { return }
 
@@ -597,8 +587,6 @@ class GameState {
         return positions
     }
 
-    // MARK: - Siphon Operations
-
     func performSiphon() -> (success: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int) {
         // Check if player has data siphons
         guard player.dataSiphons > 0 else {
@@ -688,7 +676,7 @@ class GameState {
         return (true, blocksSiphoned, programsAcquired, creditsGained, energyGained)
     }
 
-    // MARK: - Program Validation
+    // MARK: - Program Execution
 
     /// Check if a program can be executed
     func canExecuteProgram(_ type: ProgramType) -> (canExecute: Bool, reason: String?) {
@@ -817,8 +805,6 @@ class GameState {
         }
     }
 
-    // MARK: - Result Types
-
     /// Result of executing a program
     struct ProgramExecutionResult {
         let success: Bool
@@ -868,8 +854,6 @@ class GameState {
             reward: 0.0
         )
     }
-
-    // MARK: - Action Execution
 
     /// Execute a game action - single entry point for all action processing
     /// Runs player action AND enemy turn (if applicable), returns all data for animation
@@ -961,8 +945,10 @@ class GameState {
         // 4. Calculate reward and return everything
         let playerDied = player.health == .dead
         let totalKills = enemiesKilled + transmissionsKilled
-        let reward = calculateReward(
+        let reward = RewardCalculator.calculate(
             oldScore: oldScore,
+            currentScore: player.score,
+            currentStage: currentStage,
             oldHP: oldHP,
             playerDied: playerDied,
             gameWon: gameWon,
@@ -1118,8 +1104,6 @@ class GameState {
 
         return EnemyStepResult(step: step, movements: movements, attacks: attacks)
     }
-
-    // MARK: - Program Execution
 
     /// Execute a program's effect
     /// Returns execution result with affected positions for animations
@@ -1765,8 +1749,6 @@ class GameState {
         }
     }
 
-    // MARK: - Valid Actions
-
     /// Get valid actions based on current state
     func getValidActions() -> [GameAction] {
         var actions: [GameAction] = []
@@ -1824,8 +1806,6 @@ class GameState {
     }
 }
 
-// MARK: - Supporting Structures
-
 struct GameStateSnapshot {
     let playerRow: Int
     let playerCol: Int
@@ -1872,89 +1852,9 @@ struct CellSnapshot {
     let siphonCenter: Bool
 }
 
-// MARK: - Reward Calculation
+// MARK: - Kill Tracking Helpers
 
 extension GameState {
-    /// Calculate reward for reinforcement learning based on action outcome
-    /// - Parameters:
-    ///   - oldScore: Player score before action
-    ///   - playerDied: Whether player died
-    ///   - gameWon: Whether player won the game
-    ///   - stageAdvanced: Whether stage was completed
-    /// - Returns: Reward value for RL training
-    func calculateReward(oldScore: Int, oldHP: Int, playerDied: Bool, gameWon: Bool, stageAdvanced: Bool, blocksSiphoned: Int, programsAcquired: Int, creditsGained: Int, energyGained: Int, totalKills: Int, dataSiphonCollected: Bool) -> Double {
-
-        /* ============================================================================
-         * BACKUP: Original reward structure (pre-2024-12-23)
-         * Kept for reference in case we want to revert or compare performance
-         * ============================================================================
-         *
-         * let scoreDelta = Double(player.score - oldScore)
-         * var reward = scoreDelta * 0.1
-         *
-         * if dataSiphonCollected {
-         *     reward += 1.0
-         * }
-         *
-         * reward += Double(totalKills) * 0.3
-         *
-         * let hpChange = player.health.rawValue - oldHP
-         * reward += Double(hpChange) * 1.0
-         *
-         * if playerDied {
-         *     reward = 0.0
-         * } else if gameWon {
-         *     reward = Double(player.score) * 10.0 + 10
-         * } else if stageAdvanced {
-         *     reward += 1
-         *     let resourceBonus = Double(player.credits + player.energy) * 0.02
-         *     reward += resourceBonus
-         * }
-         * ============================================================================
-         */
-
-        // NEW REWARD STRUCTURE (2024-12-23)
-        // Objective: Maximize score while winning the game
-        // Philosophy: Reward outcomes (stages, score, victory), not tactics
-        // Let agent discover optimal strategies (siphons, programs, combat) through exploration
-
-        var reward = 0.0
-
-        // 1. PROGRESSIVE STAGE COMPLETION (guides agent toward winning)
-        // Exponential scaling creates strong gradient toward later stages
-        // Early stages easy to reach, later stages increasingly valuable
-        if stageAdvanced {
-            let stageRewards: [Double] = [1, 2, 4, 8, 16, 32, 64, 100]
-            let completedStage = currentStage - 1  // Stage just completed (1-8)
-            if completedStage >= 1 && completedStage <= 8 {
-                reward += stageRewards[completedStage - 1]
-            }
-        }
-
-        // 2. SCORE GAIN (encourages collecting points during gameplay)
-        // Meaningful but not dominant - provides feedback for collecting valuable blocks
-        let scoreDelta = Double(player.score - oldScore)
-        reward += scoreDelta * 0.5
-
-        // 3. VICTORY BONUSES (massive rewards for winning)
-        if gameWon {
-            // Base victory bonus for completing all 8 stages
-            reward += 500.0
-
-            // SCORE BONUS - This is what the game is really about!
-            // High-scoring wins are worth MUCH more than low-scoring wins
-            reward += Double(player.score) * 100.0
-        }
-
-        // 4. DEATH PENALTY (make failure clearly negative)
-        if playerDied {
-            reward += -10.0
-        }
-
-        return reward
-    }
-
-    // MARK: - Kill Tracking Helpers
 
     /// Remove dead enemies and track kills (excludes scheduled task spawns)
     /// Returns: Number of enemies killed (excluding scheduled task spawns)

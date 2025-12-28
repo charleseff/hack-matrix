@@ -113,7 +113,9 @@ def train(
             verbose=1,
             tensorboard_log=run_log_dir
         )
-        print("Model loaded successfully!")
+        # Increase exploration when resuming
+        model.ent_coef = 0.3  # Increased from 0.1 for more exploration
+        print(f"Model loaded successfully! Entropy coefficient set to {model.ent_coef}")
     else:
         print("Initializing MaskablePPO agent...")
         model = MaskablePPO(
@@ -128,7 +130,7 @@ def train(
             gamma=0.99,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.1,  # High exploration to prevent entropy collapse
+            ent_coef=0.3,  # High exploration to prevent entropy collapse (increased from 0.1)
         )
 
     # MARK: Setup Callbacks
