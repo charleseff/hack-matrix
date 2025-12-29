@@ -16,7 +16,16 @@
       "Bash(git merge:*)",
       "mcp__linear-server__get_issue",
       "mcp__linear-server__list_teams",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python scripts/memory_test.py:*)",
+      "Bash(python scripts/memory_test_c.py:*)",
+      "Bash(swiftc:*)",
+      "Bash(/Users/charles/dev/868-hack-2/DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix:*)",
+      "Bash(sysctl:*)",
+      "Bash(python scripts/benchmark_num_envs.py:*)",
+      "Bash(for i in 1 2 3 4 5)",
+      "Bash(do ps -o pid,rss -p 16864)",
+      "Bash(ps:*)"
     ]
   }
 }
