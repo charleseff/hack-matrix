@@ -11,6 +11,7 @@ import subprocess
 import sys
 import numpy as np
 from typing import Any, Dict, List, Optional, Tuple
+from collections import defaultdict, Counter
 import gymnasium as gym
 from gymnasium import spaces
 
@@ -90,6 +91,17 @@ class HackEnv(gym.Env):
         })
 
         self._start_process()
+        self._reset_episode_stats()
+
+    # MARK: Episode Stats Tracking
+
+    def _reset_episode_stats(self):
+        """Reset episode statistics for tracking."""
+        self._episode_reward_breakdown = defaultdict(float)
+        self._episode_action_counts = Counter()
+        self._episode_programs_used = 0
+        self._episode_highest_stage = 1
+        self._episode_steps = 0
 
     # MARK: Process Management
 
@@ -273,6 +285,7 @@ class HackEnv(gym.Env):
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[Dict[str, np.ndarray], Dict]:
         """Reset the environment."""
         super().reset(seed=seed)
+        self._reset_episode_stats()
 
         response = self._send_command({"action": "reset"})
         observation = self._observation_to_array(response["observation"])
@@ -291,6 +304,37 @@ class HackEnv(gym.Env):
         terminated = bool(response["done"])
         truncated = False
         info = response.get("info", {})
+
+        # Track episode stats
+        self._episode_steps += 1
+
+        # Track action distribution
+        if action < 4:
+            self._episode_action_counts["move"] += 1
+        elif action == 4:
+            self._episode_action_counts["siphon"] += 1
+        else:
+            self._episode_action_counts["program"] += 1
+            self._episode_programs_used += 1
+
+        # Track highest stage from player observation (denormalize: stage = normalized * 7 + 1)
+        stage = int(observation["player"][5] * 7 + 1)
+        self._episode_highest_stage = max(self._episode_highest_stage, stage)
+
+        # Accumulate reward breakdown from Swift
+        if "reward_breakdown" in info:
+            for key, value in info["reward_breakdown"].items():
+                self._episode_reward_breakdown[key] += value
+
+        # On episode end, add summary to info
+        if terminated:
+            info["episode_stats"] = {
+                "reward_breakdown": dict(self._episode_reward_breakdown),
+                "programs_used": self._episode_programs_used,
+                "highest_stage": self._episode_highest_stage,
+                "action_counts": dict(self._episode_action_counts),
+                "steps": self._episode_steps,
+            }
 
         # Add action mask for next state
         if not terminated:

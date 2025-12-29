@@ -750,7 +750,7 @@ override func mouseDown(with event: NSEvent) {
         guard result.success else { return }
 
         // Log reward for manual testing/debugging
-        print("🎯 Action: \(action) → Reward: \(String(format: "%.3f", result.reward)) | Score: \(gameState.player.score) | Stage: \(gameState.currentStage)")
+        print("🎯 Action: \(action) → Reward: \(String(format: "%.3f", result.rewardBreakdown.total)) | Score: \(gameState.player.score) | Stage: \(gameState.currentStage)")
 
         if result.gameWon {
             animateActionResult(result) { [weak self] in

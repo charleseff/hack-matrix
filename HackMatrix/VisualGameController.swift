@@ -82,6 +82,6 @@ class VisualGameController: GameCommandExecutor {
         let obs = ObservationBuilder.build(from: scene.gameState)
         // TODO: Add GameState.isGameOver() method instead of inline check
         let done = scene.gameState.player.health == .dead || scene.gameState.currentStage > Constants.totalStages
-        callback(obs, actionResult.reward, done, [:])
+        callback(obs, actionResult.rewardBreakdown.total, done, [:])
     }
 }

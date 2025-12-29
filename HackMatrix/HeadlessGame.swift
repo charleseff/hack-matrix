@@ -49,19 +49,31 @@ class HeadlessGame {
             info["death"] = true
         }
 
+        // Add reward breakdown to info dict for Python-side tracking
+        info["reward_breakdown"] = [
+            "stage": result.rewardBreakdown.stageCompletion,
+            "score": result.rewardBreakdown.scoreGain,
+            "kills": result.rewardBreakdown.kills,
+            "dataSiphon": result.rewardBreakdown.dataSiphonCollected,
+            "distance": result.rewardBreakdown.distanceShaping,
+            "victory": result.rewardBreakdown.victory,
+            "death": result.rewardBreakdown.deathPenalty
+        ]
+
         let observation = ObservationBuilder.build(from: gameState)
+        let reward = result.rewardBreakdown.total
 
         if result.stageAdvanced {
-            infoLog(
+            debugLog(
                 "Advanced to stage \(observation.stage)"
             )
         } else {
             debugLog(
-                "Step \(String(describing: action)) -> reward: \(String(format: "%.3f", result.reward)), done: \(isDone), stage: \(observation.stage), credits: \(gameState.player.credits), energy: \(gameState.player.energy)"
+                "Step \(String(describing: action)) -> reward: \(String(format: "%.3f", reward)), done: \(isDone), stage: \(observation.stage), credits: \(gameState.player.credits), energy: \(gameState.player.energy)"
             )
         }
 
-        return (observation, result.reward, isDone, info)
+        return (observation, reward, isDone, info)
     }
 
     // Get valid actions based on current state

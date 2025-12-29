@@ -1,5 +1,23 @@
 import Foundation
 
+// MARK: - Reward Breakdown for RL Training
+
+/// Detailed breakdown of reward components for debugging and analysis
+struct RewardBreakdown {
+    var stageCompletion: Double = 0
+    var scoreGain: Double = 0
+    var kills: Double = 0
+    var dataSiphonCollected: Double = 0
+    var distanceShaping: Double = 0
+    var victory: Double = 0
+    var deathPenalty: Double = 0
+
+    var total: Double {
+        stageCompletion + scoreGain + kills + dataSiphonCollected +
+        distanceShaping + victory + deathPenalty
+    }
+}
+
 // MARK: - Reward Calculator for Reinforcement Learning
 
 /// Pure reward calculation logic for RL training
@@ -22,7 +40,7 @@ struct RewardCalculator {
     ///   - totalKills: Number of enemies killed (excludes scheduled task spawns)
     ///   - dataSiphonCollected: Whether a data siphon was collected this step
     ///   - distanceToExitDelta: Change in path distance to exit (oldDist - newDist, positive = closer)
-    /// - Returns: Reward value for RL training
+    /// - Returns: RewardBreakdown with all reward components
     static func calculate(
         oldScore: Int,
         currentScore: Int,
@@ -38,43 +56,9 @@ struct RewardCalculator {
         totalKills: Int,
         dataSiphonCollected: Bool,
         distanceToExitDelta: Int
-    ) -> Double {
+    ) -> RewardBreakdown {
 
-        /* ============================================================================
-         * BACKUP: Original reward structure (pre-2024-12-23)
-         * Kept for reference in case we want to revert or compare performance
-         * ============================================================================
-         *
-         * let scoreDelta = Double(currentScore - oldScore)
-         * var reward = scoreDelta * 0.1
-         *
-         * if dataSiphonCollected {
-         *     reward += 1.0
-         * }
-         *
-         * reward += Double(totalKills) * 0.3
-         *
-         * let hpChange = currentHP - oldHP
-         * reward += Double(hpChange) * 1.0
-         *
-         * if playerDied {
-         *     reward = 0.0
-         * } else if gameWon {
-         *     reward = Double(currentScore) * 10.0 + 10
-         * } else if stageAdvanced {
-         *     reward += 1
-         *     let resourceBonus = Double(credits + energy) * 0.02
-         *     reward += resourceBonus
-         * }
-         * ============================================================================
-         */
-
-        // CURRENT REWARD STRUCTURE (2024-12-26)
-        // Objective: Maximize score while winning the game
-        // Philosophy: Reward both outcomes (stages, victory) AND tactics (kills, siphons)
-        // Dense intermediate rewards help agent learn good strategies
-
-        var reward = 0.0
+        var breakdown = RewardBreakdown()
 
         // 1. PROGRESSIVE STAGE COMPLETION (guides agent toward winning)
         // Exponential scaling creates strong gradient toward later stages
@@ -83,39 +67,36 @@ struct RewardCalculator {
             let stageRewards: [Double] = [1, 2, 4, 8, 16, 32, 64, 100]
             let completedStage = currentStage - 1  // Stage just completed (1-8)
             if completedStage >= 1 && completedStage <= 8 {
-                reward += stageRewards[completedStage - 1]
+                breakdown.stageCompletion = stageRewards[completedStage - 1]
             }
         }
 
         // 2. SCORE GAIN (encourages collecting points during gameplay)
         // Meaningful but not dominant - provides feedback for collecting valuable blocks
         let scoreDelta = Double(currentScore - oldScore)
-        reward += scoreDelta * 0.5
+        breakdown.scoreGain = scoreDelta * 0.5
 
         // 3. INTERMEDIATE REWARDS (dense feedback for good tactical behaviors)
         // These provide immediate feedback during gameplay, helping agent learn good strategies
 
         // Reward kills (excludes scheduled task spawns - already filtered in removeDeadEnemies)
-        reward += Double(totalKills) * 0.3
+        breakdown.kills = Double(totalKills) * 0.3
 
         // Reward collecting data siphons (important strategic resource)
         if dataSiphonCollected {
-            reward += 1.0
+            breakdown.dataSiphonCollected = 1.0
         }
 
         // 4. DISTANCE SHAPING (guides agent toward exit)
         // Small reward for getting closer, penalty for getting farther
         // Also rewards destroying blocks that create shorter paths
-        reward += Double(distanceToExitDelta) * 0.05
+        breakdown.distanceShaping = Double(distanceToExitDelta) * 0.05
 
         // 5. VICTORY BONUSES (massive rewards for winning)
         if gameWon {
             // Base victory bonus for completing all 8 stages
-            reward += 500.0
-
-            // SCORE BONUS - This is what the game is really about!
-            // High-scoring wins are worth MUCH more than low-scoring wins
-            reward += Double(currentScore) * 100.0
+            // Plus SCORE BONUS - high-scoring wins are worth more
+            breakdown.victory = 500.0 + Double(currentScore) * 100.0
         }
 
         // 6. DEATH PENALTY (scales with progress but always less than cumulative rewards)
@@ -134,10 +115,9 @@ struct RewardCalculator {
             // Death penalty = 50% of cumulative rewards
             // Stage 1 death: -0.5, Stage 4 death: -7.5, Stage 8 death: -113.5
             // Always ensures net positive for completing stages before death
-            let deathPenalty = cumulativeReward * 0.5
-            reward += -deathPenalty
+            breakdown.deathPenalty = -cumulativeReward * 0.5
         }
 
-        return reward
+        return breakdown
     }
 }

@@ -842,7 +842,7 @@ class GameState {
         let affectedPositions: [(row: Int, col: Int)]  // for explosion animations
         let enemySteps: [EnemyStepResult]  // for enemy movement animations
         let dataSiphonCollected: Bool  // whether a data siphon was collected this action
-        let reward: Double  // calculated reward for RL training
+        let rewardBreakdown: RewardBreakdown  // calculated reward breakdown for RL training
 
         static let failed = ActionResult(
             success: false,
@@ -854,7 +854,7 @@ class GameState {
             affectedPositions: [],
             enemySteps: [],
             dataSiphonCollected: false,
-            reward: 0.0
+            rewardBreakdown: RewardBreakdown()
         )
     }
 
@@ -973,7 +973,7 @@ class GameState {
             distanceToExitDelta = oldDistanceToExit - newDistanceToExit
         }
 
-        let reward = RewardCalculator.calculate(
+        let rewardBreakdown = RewardCalculator.calculate(
             oldScore: oldScore,
             currentScore: player.score,
             currentStage: currentStage,
@@ -1000,7 +1000,7 @@ class GameState {
             affectedPositions: affectedPositions,
             enemySteps: enemySteps,
             dataSiphonCollected: dataSiphonCollected,
-            reward: reward
+            rewardBreakdown: rewardBreakdown
         )
     }
 

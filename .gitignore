@@ -21,3 +21,8 @@ logs*/
 models/
 
 **/nohup.out
+# W&B
+wandb/
+
+# Training database
+training_history.db

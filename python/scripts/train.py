@@ -4,19 +4,25 @@ Train a MaskablePPO agent to play HackMatrix with action masking.
 
 # MARK: Imports
 
+import hashlib
 import os
+import uuid
 from datetime import datetime
 import numpy as np
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from gymnasium.wrappers import TimeLimit
 
+import wandb
+from wandb.integration.sb3 import WandbCallback
+
 from hackmatrix import HackEnv
+from hackmatrix.training_db import TrainingDB
 
 
 # MARK: Helper Functions
@@ -24,6 +30,72 @@ from hackmatrix import HackEnv
 def mask_fn(env: HackEnv) -> np.ndarray:
     """Return action mask for current state."""
     return env._get_action_mask()
+
+
+# MARK: Custom Callbacks
+
+class EpisodeStatsCallback(BaseCallback):
+    """Callback to log episode statistics to W&B and SQLite."""
+
+    def __init__(self, run_id: str, wandb_enabled: bool = True, db_path: str = "training_history.db", verbose=0):
+        super().__init__(verbose)
+        self.episode_count = 0
+        self.run_id = run_id
+        self.wandb_enabled = wandb_enabled
+        self.db = TrainingDB(db_path)
+
+    def _on_step(self) -> bool:
+        # Check for episode ends in info buffer
+        for info in self.locals.get("infos", []):
+            if "episode_stats" in info:
+                stats = info["episode_stats"]
+                self.episode_count += 1
+                breakdown = stats["reward_breakdown"]
+
+                # Log to W&B (if enabled)
+                if self.wandb_enabled:
+                    wandb.log({
+                        "episode/count": self.episode_count,
+                        "episode/reward_stage": breakdown.get("stage", 0),
+                        "episode/reward_kills": breakdown.get("kills", 0),
+                        "episode/reward_distance": breakdown.get("distance", 0),
+                        "episode/reward_score": breakdown.get("score", 0),
+                        "episode/reward_dataSiphon": breakdown.get("dataSiphon", 0),
+                        "episode/reward_victory": breakdown.get("victory", 0),
+                        "episode/reward_death": breakdown.get("death", 0),
+                        "episode/programs_used": stats["programs_used"],
+                        "episode/highest_stage": stats["highest_stage"],
+                        "episode/steps": stats["steps"],
+                        "episode/action_moves": stats["action_counts"].get("move", 0),
+                        "episode/action_siphons": stats["action_counts"].get("siphon", 0),
+                        "episode/action_programs": stats["action_counts"].get("program", 0),
+                    }, step=self.num_timesteps)
+
+                # Log to SQLite
+                self.db.log_episode(
+                    run_id=self.run_id,
+                    episode_num=self.episode_count,
+                    timestep=self.num_timesteps,
+                    stats=stats
+                )
+
+                # Console log with percentages (using absolute values so they sum to 100%)
+                total_reward = sum(breakdown.values())
+                abs_total = sum(abs(v) for v in breakdown.values()) or 1  # Avoid div by zero
+                def pct(key, label=None):
+                    label = label or key
+                    return f"{label}:{breakdown.get(key,0)/abs_total*100:.0f}%"
+                print(f"Ep {self.episode_count} | R={total_reward:.2f} | "
+                      f"{pct('stage')} {pct('kills')} {pct('distance', 'dist')} {pct('score')} {pct('dataSiphon', 'siphon')} {pct('death')} | "
+                      f"S{stats['highest_stage']} | {stats['steps']} steps | "
+                      f"prog:{stats['programs_used']} moves:{stats['action_counts'].get('move',0)} "
+                      f"siph:{stats['action_counts'].get('siphon',0)}")
+
+        return True
+
+    def _on_training_end(self) -> None:
+        """Close database connection when training ends."""
+        self.db.close()
 
 
 # MARK: Training Function
@@ -38,7 +110,8 @@ def train(
         debug: bool = False,
         info: bool = False,
         num_envs: int = 1,
-        max_episode_steps: int = 1000
+        max_episode_steps: int = 1000,
+        no_wandb: bool = False
 ):
     """
     Train a MaskablePPO agent with action masking.
@@ -54,6 +127,7 @@ def train(
         info: Enable info-level logging (less verbose)
         num_envs: Number of parallel environments (1=single, 4-8=parallel)
         max_episode_steps: Maximum steps per episode before truncation (default: 1000)
+        no_wandb: Disable Weights & Biases logging
     """
     # MARK: Setup Directories
     os.makedirs(log_dir, exist_ok=True)
@@ -61,18 +135,74 @@ def train(
 
     # When resuming, reuse the existing run directory to keep TensorBoard graphs continuous
     if resume_path:
-        # Extract run directory from resume path (e.g., models/maskable_ppo_20241223_120000/checkpoint.zip)
+        # Extract run directory from resume path (e.g., models/hackmatrix-dec29-25-1/checkpoint.zip)
         resume_dir = os.path.dirname(resume_path)
         run_name = os.path.basename(resume_dir)
         run_log_dir = os.path.join(log_dir, run_name)
         run_model_dir = resume_dir
         print(f"Resuming run: {run_name}")
     else:
-        # New run - create timestamped directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_log_dir = os.path.join(log_dir, f"maskable_ppo_{timestamp}")
-        run_model_dir = os.path.join(model_dir, f"maskable_ppo_{timestamp}")
+        # New run - create friendly name like hackmatrix-dec29-25-1
+        date_prefix = datetime.now().strftime("hackmatrix-%b%d-%y").lower()  # e.g., hackmatrix-dec29-25
+
+        # Find next available number
+        existing = [d for d in os.listdir(model_dir) if d.startswith(date_prefix)] if os.path.exists(model_dir) else []
+        next_num = 1
+        for name in existing:
+            try:
+                num = int(name.split("-")[-1])
+                next_num = max(next_num, num + 1)
+            except ValueError:
+                pass
+
+        run_name = f"{date_prefix}-{next_num}"
+        run_log_dir = os.path.join(log_dir, run_name)
+        run_model_dir = os.path.join(model_dir, run_name)
         os.makedirs(run_model_dir, exist_ok=True)
+
+    # MARK: Initialize W&B
+    # Derive run_id from run_name so it's consistent across resumes
+    run_id = hashlib.md5(run_name.encode()).hexdigest()[:8]
+    wandb_enabled = not no_wandb
+
+    if wandb_enabled:
+        wandb.init(
+            project="hackmatrix",
+            entity="charles-team",
+            name=run_name,
+            id=run_id,
+            resume="allow",  # Create if new, resume if exists
+            config={
+                # Hyperparameters
+                "learning_rate": 3e-4,
+                "n_steps": 2048,
+                "batch_size": 64,
+                "n_epochs": 10,
+                "gamma": 0.99,
+                "gae_lambda": 0.95,
+                "clip_range": 0.2,
+                "ent_coef": 0.3,
+
+                # Reward structure
+                "reward_stage_multipliers": [1, 2, 4, 8, 16, 32, 64, 100],
+                "reward_score_multiplier": 0.5,
+                "reward_kill": 0.3,
+                "reward_data_siphon": 1.0,
+                "reward_distance_shaping": 0.05,
+                "reward_victory_base": 500,
+                "reward_victory_score_mult": 100,
+                "reward_death_penalty_pct": 0.5,
+
+                # Environment
+                "num_envs": num_envs,
+                "max_episode_steps": max_episode_steps,
+                "total_timesteps": total_timesteps,
+            },
+            sync_tensorboard=True,
+        )
+        print("📊 W&B logging: ENABLED")
+    else:
+        print("📊 W&B logging: DISABLED (use without --no-wandb to enable)")
 
     # MARK: Configure Logging
     if debug:
@@ -174,10 +304,21 @@ def train(
     print(f"  tensorboard --logdir {log_dir}")
     print()
 
+    # Create callbacks
+    episode_stats_callback = EpisodeStatsCallback(run_id=run_id, wandb_enabled=wandb_enabled)
+
+    callbacks = [checkpoint_callback, eval_callback, episode_stats_callback]
+    if wandb_enabled:
+        wandb_callback = WandbCallback(
+            model_save_path=run_model_dir,
+            verbose=2,
+        )
+        callbacks.append(wandb_callback)
+
     try:
         model.learn(
             total_timesteps=total_timesteps,
-            callback=[checkpoint_callback, eval_callback],
+            callback=callbacks,
             progress_bar=True
         )
 
@@ -213,6 +354,10 @@ def train(
         except (BrokenPipeError, EOFError):
             pass  # Subprocesses already dead after Ctrl-C
 
+        # Finish W&B run
+        if wandb_enabled:
+            wandb.finish()
+
 
 # MARK: Command-Line Interface
 
@@ -240,6 +385,8 @@ if __name__ == "__main__":
                         help="Number of parallel environments (1=single, 4-8=parallel, default: 1)")
     parser.add_argument("--max-episode-steps", type=int, default=1000,
                         help="Maximum steps per episode before truncation (default: 1000)")
+    parser.add_argument("--no-wandb", action="store_true",
+                        help="Disable Weights & Biases logging")
 
     args = parser.parse_args()
 
@@ -253,5 +400,6 @@ if __name__ == "__main__":
         debug=args.debug,
         info=args.info,
         num_envs=args.num_envs,
-        max_episode_steps=args.max_episode_steps
+        max_episode_steps=args.max_episode_steps,
+        no_wandb=args.no_wandb
     )
