@@ -15,7 +15,8 @@
 - **Always use Xcode build**, NOT `swift build`
 - Build command: `xcodebuild -scheme HackMatrix -configuration Debug`
 - Output location: `DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix`
-- Python expects the executable at this location (Xcode default)
+- **Do NOT use `-derivedDataPath`** - the default path is correct
+- Python expects the executable at this location
 
 ### Git Workflow
 
@@ -180,6 +181,6 @@ python test_env.py
 
 The Python environment expects the app at:
 ```
-DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix
+DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix
 ```
-This matches VSCode's build output location (see `.vscode/launch.json`).
+This is the default xcodebuild output location.
