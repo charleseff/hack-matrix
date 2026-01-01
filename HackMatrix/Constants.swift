@@ -1,6 +1,12 @@
 import Foundation
 import CoreGraphics
 
+enum StartingBonus: CaseIterable {
+    case credits10
+    case energy11
+    case dataSiphon1
+}
+
 enum Constants {
     static let gridSize = 6
     static let cellSize: CGFloat = 80.0
@@ -8,9 +14,6 @@ enum Constants {
 
     // Starting enemies per stage (as transmissions)
     static let startingEnemies = [1, 2, 3, 4, 5, 6, 7, 8]
-
-    // Scheduled task spawn intervals per stage (in turns)
-    static let scheduledTaskIntervals = [12, 11, 10, 9, 8, 7, 6, 5]
 
     // Siphon range (cross pattern: center + 4 cardinal)
     static let siphonRange = 5

@@ -55,6 +55,10 @@ class GameState {
     var atkPlusUsedThisStage: Bool
     var exitPosition: (row: Int, col: Int) = (0, 0)  // Set during stage initialization
 
+    // Scheduled task timing (transmission spawns)
+    var scheduledTaskInterval: Int = 12  // Base interval, decreases with stage and siphons
+    var nextScheduledTaskTurn: Int = 12  // Turn when next scheduled spawn occurs
+
     // Lifetime stats tracking (for debugging/logging)
     var totalDataSiphonsCollected: Int = 0
     var totalSiphonUses: Int = 0
@@ -78,6 +82,17 @@ class GameState {
         let corners = grid.getCornerPositions()
         let playerCorner = corners.randomElement()!
         self.player = Player(row: playerCorner.0, col: playerCorner.1)
+
+        // Apply random starting bonus
+        let bonus = StartingBonus.allCases.randomElement()!
+        switch bonus {
+        case .credits10:
+            player.credits = 10
+        case .energy11:
+            player.energy = 11
+        case .dataSiphon1:
+            player.dataSiphons = 1
+        }
 
         initializeStage()
         debugLog("GameState", "🟢 ALLOCATED")
@@ -501,10 +516,11 @@ class GameState {
 
     func maybeExecuteScheduledTask() {
         guard !scheduledTasksDisabled else { return }
+        guard scheduledTaskInterval > 0 else { return }
 
-        let interval = Constants.scheduledTaskIntervals[currentStage - 1]
-        if turnCount > 0 && turnCount % interval == 0 {
+        if turnCount >= nextScheduledTaskTurn {
             spawnRandomTransmissions(count: 1, isFromScheduledTask: true)
+            nextScheduledTaskTurn = turnCount + max(1, scheduledTaskInterval)
         }
     }
 
@@ -674,6 +690,12 @@ class GameState {
         player.dataSiphons -= 1
         totalSiphonUses += 1
         // infoLog("GameState", "Used data siphon (total uses: \(totalSiphonUses), remaining: \(player.dataSiphons))")
+
+        // Siphoning affects scheduled task timing:
+        // - Permanently decreases interval (spawns faster over time)
+        // - Temporarily adds delay to current countdown (immediate relief)
+        scheduledTaskInterval = max(1, scheduledTaskInterval - 1)
+        nextScheduledTaskTurn += 5
 
         // Don't advance turn here - let caller handle animated turn flow
         return (true, blocksSiphoned, programsAcquired, creditsGained, energyGained)
@@ -1771,6 +1793,11 @@ class GameState {
 
         if currentStage < Constants.totalStages {
             currentStage += 1
+
+            // Reset scheduled task interval to base for new stage (siphon reductions don't carry over)
+            scheduledTaskInterval = 13 - currentStage  // 12 for stage 1, 11 for stage 2, etc.
+            nextScheduledTaskTurn = turnCount + scheduledTaskInterval
+
             initializeStage()
             return true  // Game continues
         } else {

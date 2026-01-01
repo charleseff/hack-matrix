@@ -27,6 +27,12 @@ struct HackApp: App {
                 HeadlessTest.runPerformanceTest()
             }
         }
+
+        // Check for --run-tests command-line argument
+        if CommandLine.arguments.contains("--run-tests") {
+            GameLogicTests.runAllTests()
+            exit(0)
+        }
     }
 
     var body: some Scene {
