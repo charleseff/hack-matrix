@@ -107,6 +107,7 @@ def train(
         log_dir: str = "./logs",
         model_dir: str = "./models",
         resume_path: str = None,
+        run_suffix: str = None,
         debug: bool = False,
         info: bool = False,
         num_envs: int = 1,
@@ -156,6 +157,11 @@ def train(
                 pass
 
         run_name = f"{date_prefix}-{next_num}"
+
+        # Add custom suffix if provided
+        if run_suffix:
+            run_name = f"{run_name}-{run_suffix}"
+
         run_log_dir = os.path.join(log_dir, run_name)
         run_model_dir = os.path.join(model_dir, run_name)
         os.makedirs(run_model_dir, exist_ok=True)
@@ -383,6 +389,8 @@ if __name__ == "__main__":
                         help="Directory to save models")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to checkpoint to resume training from (e.g., './models/maskable_ppo_20241218_120000/maskable_ppo_hack_100000_steps.zip')")
+    parser.add_argument("--run-suffix", type=str, default=None,
+                        help="Optional suffix for run name (e.g., 'bignet' → hackmatrix-jan05-26-1-bignet)")
     parser.add_argument("--debug", action="store_true",
                         help="Enable verbose debug logging (Swift + Python)")
     parser.add_argument("--info", action="store_true",
@@ -403,6 +411,7 @@ if __name__ == "__main__":
         log_dir=args.log_dir,
         model_dir=args.model_dir,
         resume_path=args.resume,
+        run_suffix=args.run_suffix,
         debug=args.debug,
         info=args.info,
         num_envs=args.num_envs,
