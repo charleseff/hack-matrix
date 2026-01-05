@@ -85,11 +85,11 @@ class EpisodeStatsCallback(BaseCallback):
                 def pct(key, label=None):
                     label = label or key
                     return f"{label}:{breakdown.get(key,0)/abs_total*100:.0f}%"
-                print(f"Ep {self.episode_count} | R={total_reward:.2f} | "
-                      f"{pct('stage')} {pct('kills')} {pct('distance', 'dist')} {pct('score')} {pct('dataSiphon', 'siphon')} {pct('death')} | "
-                      f"S{stats['highest_stage']} | {stats['steps']} steps | "
-                      f"prog:{stats['programs_used']} moves:{stats['action_counts'].get('move',0)} "
-                      f"siph:{stats['action_counts'].get('siphon',0)}")
+                # print(f"Ep {self.episode_count} | R={total_reward:.2f} | "
+                #       f"{pct('stage')} {pct('kills')} {pct('distance', 'dist')} {pct('score')} {pct('dataSiphon', 'siphon')} {pct('death')} | "
+                #       f"S{stats['highest_stage']} | {stats['steps']} steps | "
+                #       f"prog:{stats['programs_used']} moves:{stats['action_counts'].get('move',0)} "
+                #       f"siph:{stats['action_counts'].get('siphon',0)}")
 
         return True
 
@@ -171,6 +171,12 @@ def train(
         "clip_range": 0.2,
         "ent_coef": 0.3,
         "vf_coef": 1.0,  # Increased from 0.5 to prioritize value function learning
+        "policy_kwargs": {
+            "net_arch": {
+                "pi": [256, 256, 128],  # Policy: 3 layers (more capacity for complex decisions)
+                "vf": [256, 256, 128],  # Value: 3 layers (better state evaluation)
+            }
+        }
     }
 
     # MARK: Initialize W&B
