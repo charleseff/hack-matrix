@@ -160,6 +160,19 @@ def train(
         run_model_dir = os.path.join(model_dir, run_name)
         os.makedirs(run_model_dir, exist_ok=True)
 
+    # MARK: Model Hyperparameters (defined once, used everywhere)
+    model_config = {
+        "learning_rate": 3e-4,
+        "n_steps": 4096,  # Increased from 2048 for better value estimates
+        "batch_size": 64,
+        "n_epochs": 20,  # Increased from 10 to train value function more
+        "gamma": 0.99,
+        "gae_lambda": 0.95,
+        "clip_range": 0.2,
+        "ent_coef": 0.3,
+        "vf_coef": 1.0,  # Increased from 0.5 to prioritize value function learning
+    }
+
     # MARK: Initialize W&B
     # Derive run_id from run_name so it's consistent across resumes
     run_id = hashlib.md5(run_name.encode()).hexdigest()[:8]
@@ -172,16 +185,10 @@ def train(
             name=run_name,
             id=run_id,
             resume="allow",  # Create if new, resume if exists
+            save_code=True,  # Save code snapshot
             config={
-                # Hyperparameters
-                "learning_rate": 3e-4,
-                "n_steps": 2048,
-                "batch_size": 64,
-                "n_epochs": 10,
-                "gamma": 0.99,
-                "gae_lambda": 0.95,
-                "clip_range": 0.2,
-                "ent_coef": 0.3,
+                # Model hyperparameters
+                **model_config,
 
                 # Reward structure
                 "reward_stage_multipliers": [1, 2, 4, 8, 16, 32, 64, 100],
@@ -257,14 +264,7 @@ def train(
             env,
             verbose=1,
             tensorboard_log=run_log_dir,
-            learning_rate=3e-4,
-            n_steps=2048,
-            batch_size=64,
-            n_epochs=10,
-            gamma=0.99,
-            gae_lambda=0.95,
-            clip_range=0.2,
-            ent_coef=0.3,  # High exploration to prevent entropy collapse (increased from 0.1)
+            **model_config  # Use shared config defined above
         )
 
     # MARK: Setup Callbacks
