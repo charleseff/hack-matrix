@@ -6,8 +6,11 @@ Train a MaskablePPO agent to play HackMatrix with action masking.
 
 import hashlib
 import os
+import subprocess
+import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 import numpy as np
 
 from sb3_contrib import MaskablePPO
@@ -25,6 +28,40 @@ from hackmatrix import HackEnv
 from hackmatrix.training_db import TrainingDB
 from hackmatrix.training_config import MODEL_CONFIG
 from hackmatrix.training_utils import make_env
+
+
+# MARK: Helper Functions
+
+def get_game_binary_info():
+    """Get Swift game binary info for reproducibility tracking.
+
+    Returns dict with binary path, SHA256 hash, and build timestamp.
+    This ensures W&B tracks both Python AND Swift code changes.
+    """
+    # Expected path from CLAUDE.md build instructions
+    binary_path = Path("../DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix")
+
+    if not binary_path.exists():
+        return {
+            "game_binary_path": str(binary_path),
+            "game_binary_sha256": "NOT_FOUND",
+            "game_binary_build_time": None,
+        }
+
+    # Get SHA256 hash of binary
+    sha256_hash = hashlib.sha256()
+    with open(binary_path, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+
+    # Get build timestamp
+    build_time = datetime.fromtimestamp(binary_path.stat().st_mtime).isoformat()
+
+    return {
+        "game_binary_path": str(binary_path),
+        "game_binary_sha256": sha256_hash.hexdigest(),
+        "game_binary_build_time": build_time,
+    }
 
 
 # MARK: Custom Callbacks
@@ -192,6 +229,9 @@ def train(
                 "num_envs": num_envs,
                 "max_episode_steps": max_episode_steps,
                 "total_timesteps": total_timesteps,
+
+                # Game binary tracking (Swift environment)
+                **get_game_binary_info(),
             },
             sync_tensorboard=True,
         )
