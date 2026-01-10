@@ -95,6 +95,13 @@ class EpisodeStatsCallback(BaseCallback):
                         "episode/reward_dataSiphon": breakdown.get("dataSiphon", 0),
                         "episode/reward_victory": breakdown.get("victory", 0),
                         "episode/reward_death": breakdown.get("death", 0),
+                        "episode/reward_resourceGain": breakdown.get("resourceGain", 0),
+                        "episode/reward_resourceHolding": breakdown.get("resourceHolding", 0),
+                        "episode/reward_damagePenalty": breakdown.get("damagePenalty", 0),
+                        "episode/reward_hpRecovery": breakdown.get("hpRecovery", 0),
+                        "episode/reward_siphonQuality": breakdown.get("siphonQuality", 0),
+                        "episode/reward_programWaste": breakdown.get("programWaste", 0),
+                        "episode/reward_siphonDeathPenalty": breakdown.get("siphonDeathPenalty", 0),
                         "episode/programs_used": stats["programs_used"],
                         "episode/highest_stage": stats["highest_stage"],
                         "episode/steps": stats["steps"],
@@ -224,6 +231,25 @@ def train(
                 "reward_victory_base": 500,
                 "reward_victory_score_mult": 100,
                 "reward_death_penalty_pct": 0.5,
+
+                # NEW: Resource rewards
+                "reward_credit_gain_multiplier": 0.05,
+                "reward_energy_gain_multiplier": 0.05,
+                "reward_credit_holding_multiplier": 0.001,
+                "reward_energy_holding_multiplier": 0.001,
+
+                # NEW: HP penalties and recovery
+                "reward_damage_penalty_per_hp": -1.0,
+                "reward_hp_recovery_per_hp": 1.0,
+
+                # NEW: Siphon optimization
+                "reward_siphon_suboptimal_penalty": -0.5,
+
+                # NEW: Program waste
+                "reward_reset_at_2hp_penalty": -0.3,
+
+                # NEW: Siphon-caused death
+                "reward_siphon_caused_death_penalty": -10.0,
 
                 # Environment
                 "num_envs": num_envs,

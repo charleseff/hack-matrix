@@ -40,6 +40,13 @@ class TrainingDB:
                 reward_data_siphon REAL DEFAULT 0,
                 reward_victory REAL DEFAULT 0,
                 reward_death REAL DEFAULT 0,
+                reward_resource_gain REAL DEFAULT 0,
+                reward_resource_holding REAL DEFAULT 0,
+                reward_damage_penalty REAL DEFAULT 0,
+                reward_hp_recovery REAL DEFAULT 0,
+                reward_siphon_quality REAL DEFAULT 0,
+                reward_program_waste REAL DEFAULT 0,
+                reward_siphon_death REAL DEFAULT 0,
                 programs_used INTEGER DEFAULT 0,
                 highest_stage INTEGER DEFAULT 1,
                 steps INTEGER DEFAULT 0,
@@ -77,9 +84,12 @@ class TrainingDB:
                 run_id, timestamp, episode_num, timestep, total_reward,
                 reward_stage, reward_kills, reward_distance, reward_score,
                 reward_data_siphon, reward_victory, reward_death,
+                reward_resource_gain, reward_resource_holding,
+                reward_damage_penalty, reward_hp_recovery,
+                reward_siphon_quality, reward_program_waste, reward_siphon_death,
                 programs_used, highest_stage, steps,
                 action_moves, action_siphons, action_programs
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             run_id,
             datetime.now().isoformat(),
@@ -93,6 +103,13 @@ class TrainingDB:
             breakdown.get("dataSiphon", 0),
             breakdown.get("victory", 0),
             breakdown.get("death", 0),
+            breakdown.get("resourceGain", 0),
+            breakdown.get("resourceHolding", 0),
+            breakdown.get("damagePenalty", 0),
+            breakdown.get("hpRecovery", 0),
+            breakdown.get("siphonQuality", 0),
+            breakdown.get("programWaste", 0),
+            breakdown.get("siphonDeathPenalty", 0),
             stats.get("programs_used", 0),
             stats.get("highest_stage", 1),
             stats.get("steps", 0),
@@ -153,7 +170,10 @@ class TrainingDB:
             SELECT
                 episode_num, timestep, total_reward, highest_stage, steps,
                 reward_stage, reward_kills, reward_distance, reward_score,
-                reward_data_siphon, reward_victory, reward_death
+                reward_data_siphon, reward_victory, reward_death,
+                reward_resource_gain, reward_resource_holding,
+                reward_damage_penalty, reward_hp_recovery,
+                reward_siphon_quality, reward_program_waste, reward_siphon_death
             FROM episodes
             WHERE run_id = ?
             ORDER BY episode_num DESC
@@ -175,6 +195,13 @@ class TrainingDB:
                     "dataSiphon": row[9],
                     "victory": row[10],
                     "death": row[11],
+                    "resourceGain": row[12],
+                    "resourceHolding": row[13],
+                    "damagePenalty": row[14],
+                    "hpRecovery": row[15],
+                    "siphonQuality": row[16],
+                    "programWaste": row[17],
+                    "siphonDeathPenalty": row[18],
                 }
             }
             for row in cursor.fetchall()
