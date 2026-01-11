@@ -2,6 +2,7 @@
 import SwiftUI
 import SpriteKit
 
+@main
 public struct HackApp: App {
     public init() {
         fputs("==> HackApp.init() called\n", stderr)

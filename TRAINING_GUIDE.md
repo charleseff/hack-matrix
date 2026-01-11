@@ -104,7 +104,7 @@ tensorboard --logdir logs/
 ```bash
 # Run game with reward logging
 cd /Users/charles/dev/868-hack-2
-./DerivedData/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix
+.build/debug/HackMatrix
 ```
 
 **What to verify:**

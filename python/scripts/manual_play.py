@@ -201,13 +201,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Path to Swift binary
-    binary_path = "../DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix"
+    # Path to Xcode-built app (GUI mode requires proper .app bundle)
+    binary_path = Path(__file__).parent.parent.parent / "DerivedData" / "HackMatrix" / "Build" / "Products" / "Debug" / "HackMatrix.app" / "Contents" / "MacOS" / "HackMatrix"
 
-    if not Path(binary_path).exists():
+    if not binary_path.exists():
         print(f"❌ Binary not found: {binary_path}")
-        print("\nBuild first:")
-        print("  xcodebuild -scheme HackMatrix -configuration Debug")
+        print("\nBuild with Xcode first:")
+        print("  xcodebuild -scheme HackMatrix -configuration Debug build")
         sys.exit(1)
 
-    monitor_gameplay(binary_path, debug_scenario=args.debug_scenario)
+    monitor_gameplay(str(binary_path), debug_scenario=args.debug_scenario)

@@ -1,54 +1,55 @@
 # Building HackMatrix
 
-HackMatrix uses Swift Package Manager for all builds:
-- **macOS**: Full GUI with SwiftUI/SpriteKit
-- **Linux**: Headless CLI only (for ML training)
+HackMatrix uses a hybrid build approach:
+- **SPM** (`swift build`): Headless CLI for ML training (macOS + Linux)
+- **Xcode** (`xcodebuild`): Full GUI app (macOS only)
 
-## Build
+## Quick Start
 
 ```bash
+# Training (headless CLI)
 swift build
-```
-
-## Run
-
-```bash
-# GUI mode (macOS only)
-.build/debug/HackMatrix
-
-# Headless mode (for Python ML training)
 .build/debug/HackMatrix --headless-cli
+
+# GUI app (macOS)
+xcodebuild -scheme HackMatrix -configuration Debug build
+open DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app
 ```
 
-## Docker (Linux)
+## Python Integration
+
+Python automatically selects the right binary:
+- **Training** (headless): Uses SPM build at `.build/debug/HackMatrix`
+- **Visual mode**: Uses Xcode build at `DerivedData/.../HackMatrix.app`
 
 ```bash
-# Build
+# Training uses SPM build
+cd python && source venv/bin/activate
+python scripts/train.py
+
+# Manual play uses Xcode build (GUI)
+python scripts/manual_play.py
+```
+
+## Linux (Docker)
+
+```bash
+# Build headless CLI
 docker run --rm -v "$(pwd)":/workspace -w /workspace swift:6.0.3-jammy swift build
 
 # Test
 docker run --rm -v "$(pwd)":/workspace -w /workspace swift:6.0.3-jammy \
-  bash -c 'echo "{\"action\": \"reset\"}" | .build/debug/HackMatrix --headless-cli'
+  bash -c 'echo "{\"action\": \"reset\"}" | .build/debug/HackMatrix'
 ```
 
 ## Architecture
 
-The codebase uses conditional compilation (`#if canImport(SpriteKit)`) to include GUI code only on macOS. On Linux, only the headless game logic is compiled.
-
-| Component | macOS | Linux |
-|-----------|-------|-------|
+| Component | SPM (swift build) | Xcode |
+|-----------|-------------------|-------|
 | Game logic | ✓ | ✓ |
 | Headless CLI | ✓ | ✓ |
-| SwiftUI GUI | ✓ | - |
-| SpriteKit rendering | ✓ | - |
+| SwiftUI GUI | - | ✓ |
+| SpriteKit rendering | - | ✓ |
+| .app bundle | - | ✓ |
 
-## Python Integration
-
-Update the executable path in `python/hackmatrix/gym_env.py`:
-```python
-# macOS (current)
-executable = "DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix"
-
-# SPM build (new)
-executable = ".build/debug/HackMatrix"
-```
+SPM excludes `App.swift` and GUI code via conditional compilation. Xcode includes everything and produces a proper .app bundle for macOS GUI.

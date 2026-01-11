@@ -18,12 +18,14 @@ let package = Package(
     ],
     targets: [
         // Core game logic + GUI (GUI files use #if canImport(SwiftUI))
+        // App.swift excluded - Xcode uses it directly with @main, SPM uses Sources/SPMMain/main.swift
         .target(
             name: "HackMatrixCore",
             path: "HackMatrix",
             exclude: [
                 "Info.plist",
-                "Assets.xcassets"
+                "Assets.xcassets",
+                "App.swift"
             ]
         ),
         // Entry point (launches GUI on macOS, CLI on Linux)

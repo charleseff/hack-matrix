@@ -1,17 +1,9 @@
-// Unified entry point for both macOS and Linux builds.
-// - macOS: Launches SwiftUI GUI app
-// - Linux: Runs headless CLI for ML training
+// SPM entry point - headless CLI only
+// For GUI app, use Xcode build which creates proper .app bundle
 
 import Foundation
 import HackMatrixCore
 
-#if canImport(SwiftUI)
-import SwiftUI
-
-// macOS: Launch the SwiftUI app
-HackApp.main()
-#else
-// Linux: Run headless CLI only
+// Run headless CLI (works on both macOS and Linux)
 let cli = HeadlessGameCLI()
 cli.run()
-#endif

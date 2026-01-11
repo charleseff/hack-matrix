@@ -18,9 +18,12 @@ from .observation_utils import parse_observation, denormalize_player
 
 # MARK: Constants
 
-# Default app path relative to this file (SPM build location)
+# App paths relative to this file
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# SPM build - headless CLI only (for training)
 _DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "..", ".build", "debug", "HackMatrix")
+# Xcode build - full GUI app (for visual mode)
+_XCODE_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "..", "DerivedData", "HackMatrix", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
 
 
 # MARK: HackEnv Class
@@ -32,12 +35,14 @@ class HackEnv(gym.Env):
 
     # MARK: Initialization
 
-    def __init__(self, app_path: str = _DEFAULT_APP_PATH, visual: bool = False, debug_scenario: bool = False, debug: bool = False, info: bool = False):
+    def __init__(self, app_path: str = None, visual: bool = False, debug_scenario: bool = False, debug: bool = False, info: bool = False):
         """
         Initialize the environment.
 
         Args:
-            app_path: Path to the Swift executable
+            app_path: Path to the Swift executable. If None, uses:
+                      - Xcode build (GUI app) for visual mode
+                      - SPM build (headless CLI) for training mode
             visual: If True, launch GUI with animations (visual CLI mode)
             debug_scenario: If True, use debug scenario (fixed stage layout)
             debug: If True, enable verbose debug logging
@@ -45,7 +50,14 @@ class HackEnv(gym.Env):
         """
         super().__init__()
 
-        self.app_path = app_path
+        # Select appropriate binary based on mode
+        if app_path is None:
+            if visual:
+                self.app_path = _XCODE_APP_PATH
+            else:
+                self.app_path = _DEFAULT_APP_PATH
+        else:
+            self.app_path = app_path
         self.visual = visual
         self.debug_scenario = debug_scenario
         self.debug = debug

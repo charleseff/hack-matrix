@@ -40,7 +40,7 @@ def run_test(num_episodes=100, steps_per_episode=100):
     # c_path = os.path.join(os.path.dirname(__file__), "..", "..", "test_memory_foundation")
     # c_path = os.path.join(os.path.dirname(__file__), "..", "..", "test_memory_swiftui")
     # c_path = os.path.join(os.path.dirname(__file__), "..", "..", "test_memory_spritekit")
-    c_path = os.path.join(os.path.dirname(__file__), "..", "..", "DerivedData", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
+    c_path = os.path.join(os.path.dirname(__file__), "..", "..", ".build", "debug", "HackMatrix")
 
     # Start program
     cmd = [c_path]

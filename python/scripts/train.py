@@ -39,7 +39,7 @@ def get_game_binary_info():
     This ensures W&B tracks both Python AND Swift code changes.
     """
     # Expected path from CLAUDE.md build instructions
-    binary_path = Path("../DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix")
+    binary_path = Path("../.build/debug/HackMatrix")
 
     if not binary_path.exists():
         return {

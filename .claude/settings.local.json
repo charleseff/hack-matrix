@@ -33,7 +33,12 @@
       "Skill(plan-code-changes)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nWIP: Add action history tracking for anomaly detection\n\n- Add actionHistory array to GameState for debugging\n- Track each successful action in tryExecuteAction\\(\\)\n\nPart of anomaly detection feature to debug suspicious game states\n\\(e.g., siphonsUsed > siphonsCollected, high programUses\\)\n\nSee plan: ~/.claude/plans/plan-anomaly-detection-logging.md\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(/Users/charles/dev/868-hack-2/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python:*)",
+      "Bash(timeout 120 python:*)",
+      "Bash(docker pull:*)",
+      "Bash(open -a OrbStack)",
+      "Bash(docker info:*)"
     ]
   }
 }

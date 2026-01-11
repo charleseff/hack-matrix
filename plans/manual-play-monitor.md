@@ -170,11 +170,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Path to Swift binary
-    binary_path = "../DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix"
+    binary_path = "../.build/debug/HackMatrix"
 
     if not Path(binary_path).exists():
         print(f"❌ Binary not found: {binary_path}")
-        print("Build first: xcodebuild -scheme HackMatrix -configuration Debug")
+        print("Build first: swift build")
         sys.exit(1)
 
     monitor_gameplay(binary_path, debug_scenario=args.debug_scenario)
