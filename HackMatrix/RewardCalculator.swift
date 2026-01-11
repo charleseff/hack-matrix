@@ -48,8 +48,8 @@ struct RewardCalculator {
     // MARK: Resource Reward Constants
     private static let creditGainMultiplier: Double = 0.05      // Reward per credit gained
     private static let energyGainMultiplier: Double = 0.05      // Reward per energy gained
-    private static let creditHoldingMultiplier: Double = 0.001  // Small bonus per credit held
-    private static let energyHoldingMultiplier: Double = 0.001  // Small bonus per energy held
+    private static let creditHoldingMultiplier: Double = 0.01   // Bonus per credit held at stage completion
+    private static let energyHoldingMultiplier: Double = 0.01   // Bonus per energy held at stage completion
 
     // MARK: HP Penalty Constants
     private static let damagePenaltyPerHP: Double = -1.0        // Penalty per HP lost
@@ -186,9 +186,12 @@ struct RewardCalculator {
         breakdown.resourceGain = Double(creditsGainedDelta) * creditGainMultiplier +
                                  Double(energyGainedDelta) * energyGainMultiplier
 
-        // 8. RESOURCE HOLDING REWARD (small continuous bonus for maintaining reserves)
-        breakdown.resourceHolding = Double(currentCredits) * creditHoldingMultiplier +
-                                    Double(currentEnergy) * energyHoldingMultiplier
+        // 8. RESOURCE HOLDING REWARD (bonus for maintaining reserves ONLY on stage completion)
+        // Only granted when completing a stage to prevent infinite reward farming by staying in same stage
+        if stageAdvanced {
+            breakdown.resourceHolding = Double(currentCredits) * creditHoldingMultiplier +
+                                        Double(currentEnergy) * energyHoldingMultiplier
+        }
 
         // 9. DAMAGE PENALTY (negative reward for taking damage)
         let hpLost = oldHP - currentHP

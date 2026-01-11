@@ -184,6 +184,14 @@ def print_observation_detailed(
     programs = observation["programs"]
     grid = observation["grid"]
 
+    # Program names by action index (5-27) - must match ProgramType in Program.swift
+    program_names = [
+        "PUSH", "PULL", "CRASH", "WARP", "POLY", "WAIT", "DEBUG",
+        "ROW", "COL", "UNDO", "STEP", "SIPH+", "EXCH", "SHOW",
+        "RESET", "CALM", "D_BOM", "DELAY", "ANTI-V", "SCORE",
+        "REDUC", "ATK+", "HACK"
+    ]
+
     print(f"\n{'='*80}")
     print(f"STEP {step}")
     print('='*80)
@@ -201,8 +209,10 @@ def print_observation_detailed(
     owned_indices = np.where(programs == 1)[0]
     print(f"\n📚 Programs: {len(owned_indices)}/23 owned")
     if len(owned_indices) > 0:
-        print(f"  Indices: {list(owned_indices)}")
-        print(f"  Action indices: {list(owned_indices + 5)}")
+        owned_names = [program_names[i] for i in owned_indices]
+        action_indices = [int(i) + 5 for i in owned_indices]
+        print(f"  Owned: {', '.join(owned_names)}")
+        print(f"  Action indices: {action_indices}")
 
     # GRID ANALYSIS
     print(f"\n🗺️  Grid Analysis (6×6×40):")
@@ -225,18 +235,44 @@ def print_observation_detailed(
         4: "Enemy HP", 5: "Enemy Stunned",
         6: "Data Block", 7: "Program Block", 8: "Question Block",
         9: "Block Points", 10: "Block Siphoned",
-        34: "Transmission Spawn", 35: "Transmission Turns",
+        # Channels 11-33: Program type one-hot (action indices 5-27)
+        **{11 + i: f"Program: {program_names[i]}" for i in range(23)},
+        34: "Siphon Spawn Cost", 35: "Transmission Countdown",
         36: "Credits", 37: "Energy",
         38: "Data Siphon Cell", 39: "Exit Cell"
     }
 
+    # Denormalization multipliers for channels that represent counts
+    # Maps channel -> multiplier to convert normalized [0,1] back to raw value
+    channel_denorm = {
+        4: 3,    # Enemy HP: 0-3
+        9: 9,    # Block Points: 0-9
+        34: 9,   # Siphon Spawn Cost: 1-9 (stored as 0-9 normalized)
+        35: 4,   # Transmission Countdown: 0-4 turns
+        36: 3,   # Credits: 0-3
+        37: 3,   # Energy: 0-3
+    }
+
     if active_channels:
         print(f"  Active Channels ({len(active_channels)}/40):")
-        for ch in active_channels[:10]:  # Show first 10
-            name = channel_names.get(ch, f"Program Type {ch-11}" if 11 <= ch <= 33 else f"Channel {ch}")
-            print(f"    - {ch}: {name}")
-        if len(active_channels) > 10:
-            print(f"    ... and {len(active_channels) - 10} more")
+        for ch in active_channels:
+            name = channel_names.get(ch, f"Channel {ch}")
+            # Show which cells have non-zero values for this channel
+            nonzero_cells = []
+            for r in range(6):
+                for c in range(6):
+                    val = grid[r, c, ch]
+                    if val != 0:
+                        # Denormalize if this channel has a multiplier
+                        if ch in channel_denorm:
+                            raw_val = int(round(val * channel_denorm[ch]))
+                            nonzero_cells.append(f"({r},{c})={raw_val}")
+                        else:
+                            nonzero_cells.append(f"({r},{c})={val:.2f}")
+            cells_str = ", ".join(nonzero_cells[:8])  # First 8 cells
+            if len(nonzero_cells) > 8:
+                cells_str += f", ...+{len(nonzero_cells)-8} more"
+            print(f"    - {ch:2d}: {name:24s} → {cells_str}")
 
     # REWARD
     print(f"\n💰 Reward: {reward:+.4f}")

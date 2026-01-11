@@ -50,6 +50,8 @@ def monitor_gameplay(app_path: str, debug_scenario: bool = False):
 
     step = 0
     pending_observation = None  # Store observation until we get valid actions
+    total_reward = 0.0
+    cumulative_breakdown = {}  # Track cumulative reward by component
 
     try:
         # Send initial reset command to start the game
@@ -101,7 +103,17 @@ def monitor_gameplay(app_path: str, debug_scenario: bool = False):
 
                     if pending_observation:
                         obs_data, obs_step = pending_observation
-                        print_observation(obs_data, obs_step, valid_actions)
+
+                        # Accumulate rewards
+                        reward = obs_data.get("reward", 0)
+                        total_reward += reward
+
+                        # Accumulate breakdown
+                        breakdown = obs_data.get("info", {}).get("reward_breakdown", {})
+                        for key, value in breakdown.items():
+                            cumulative_breakdown[key] = cumulative_breakdown.get(key, 0) + value
+
+                        print_observation(obs_data, obs_step, valid_actions, total_reward, cumulative_breakdown)
                         pending_observation = None
 
                 elif "error" in data:
@@ -131,7 +143,8 @@ def request_valid_actions(process):
         pass  # Process terminated
 
 
-def print_observation(data: dict, step: int, valid_actions: list = None):
+def print_observation(data: dict, step: int, valid_actions: list = None,
+                       total_reward: float = 0.0, cumulative_breakdown: dict = None):
     """Pretty-print observation data using robust observation_utils."""
 
     try:
@@ -152,6 +165,21 @@ def print_observation(data: dict, step: int, valid_actions: list = None):
             info=info,
             valid_actions=valid_actions
         )
+
+        # Print cumulative rewards
+        print(f"\n📈 Cumulative: {total_reward:+.4f}")
+        if cumulative_breakdown:
+            nonzero = {k: v for k, v in cumulative_breakdown.items() if v != 0}
+            if nonzero:
+                # Sort by absolute value, descending
+                sorted_items = sorted(nonzero.items(), key=lambda x: abs(x[1]), reverse=True)
+                for k, v in sorted_items[:8]:  # Top 8 contributors
+                    sign = "+" if v > 0 else ""
+                    print(f"    {k:20s}: {sign}{v:.4f}")
+                if len(sorted_items) > 8:
+                    print(f"    ... and {len(sorted_items) - 8} more")
+        print("="*80)
+
         sys.stdout.flush()
 
     except Exception as e:

@@ -219,6 +219,7 @@ class GameState {
     func initializeStage() {
         // Keep enemies and transmissions (they persist across stages)
         turnCount = 0
+        nextScheduledTaskTurn = scheduledTaskInterval  // Reset scheduled task timing for new stage
         showActivated = false
         scheduledTasksDisabled = false
         stepActive = false
@@ -2010,9 +2011,8 @@ class GameState {
 
             // Reset scheduled task interval to base for new stage (siphon reductions don't carry over)
             scheduledTaskInterval = 13 - currentStage  // 12 for stage 1, 11 for stage 2, etc.
-            nextScheduledTaskTurn = turnCount + scheduledTaskInterval
 
-            initializeStage()
+            initializeStage()  // This sets nextScheduledTaskTurn based on the new interval
             return true  // Game continues
         } else {
             return false  // Victory!
