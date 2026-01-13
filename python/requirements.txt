@@ -10,3 +10,4 @@ torch>=2.0.0
 # For visualization and monitoring
 tensorboard>=2.14.0
 matplotlib>=3.7.0
+wandb>=0.15.0

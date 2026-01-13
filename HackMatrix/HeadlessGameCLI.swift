@@ -9,11 +9,6 @@ public class HeadlessGameCLI: GameCommandExecutor {
     public init() {}
 
     public func run() {
-        // Check for --headless-cli flag
-        guard CommandLine.arguments.contains("--headless-cli") else {
-            return
-        }
-
         // Configure logging level based on flags
         if CommandLine.arguments.contains("--debug") {
             DebugConfig.logLevel = .debug

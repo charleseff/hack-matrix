@@ -2,31 +2,40 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug HackMatrix",
+      "name": "Debug Headless CLI (SPM)",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/.build/debug/HackMatrix",
       "args": [],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build HackMatrix"
+      "preLaunchTask": "Build (SPM - Headless)"
     },
     {
-      "name": "Debug Headless CLI",
+      "name": "Debug GUI (Xcode)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/.build/debug/HackMatrix",
-      "args": ["--headless-cli"],
+      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": [],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build HackMatrix"
+      "preLaunchTask": "Build (Xcode - GUI)"
     },
     {
-      "name": "Debug Scenario",
+      "name": "Debug GUI - Visual CLI (Xcode)",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/.build/debug/HackMatrix",
+      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": ["--visual-cli"],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Xcode - GUI)"
+    },
+    {
+      "name": "Debug GUI - Scenario (Xcode)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
       "args": ["--debug-scenario"],
       "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build HackMatrix"
+      "preLaunchTask": "Build (Xcode - GUI)"
     }
   ]
 }

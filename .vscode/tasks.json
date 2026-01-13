@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build HackMatrix",
+      "label": "Build (SPM - Headless)",
       "type": "shell",
       "command": "swift",
       "args": ["build"],
@@ -13,11 +13,19 @@
       "problemMatcher": ["$swiftc"]
     },
     {
+      "label": "Build (Xcode - GUI)",
+      "type": "shell",
+      "command": "xcodebuild",
+      "args": ["-scheme", "HackMatrix", "-configuration", "Debug", "build"],
+      "group": "build",
+      "problemMatcher": ["$swiftc"]
+    },
+    {
       "label": "Run GUI",
       "type": "shell",
-      "command": "${workspaceFolder}/.build/debug/HackMatrix",
-      "args": [],
-      "dependsOn": "Build HackMatrix",
+      "command": "open",
+      "args": ["${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app"],
+      "dependsOn": "Build (Xcode - GUI)",
       "problemMatcher": []
     }
   ]
