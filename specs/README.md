@@ -25,3 +25,20 @@ Before starting a major feature or architectural change, create a spec document 
 - **Complete** - Fully implemented and verified
 
 When finishing a spec, update its status to **Complete** and set the next spec to **Active** in both the Current Focus section and the Specs Index table.
+
+## Firewall Notes
+
+The dev container has an outbound firewall with an allowlist. If a spec requires network access to new domains (e.g., pip install from a new package source), you may need to update the firewall.
+
+**Temporary (current session):**
+```bash
+# Resolve and add domain IPs
+for ip in $(dig +short example.com | grep -E '^[0-9]'); do
+    sudo ipset add allowed-domains "$ip"
+done
+```
+
+**Permanent (survives container rebuild):**
+Add the domain to `.devcontainer/init-firewall.sh` in the allowed domains list.
+
+**Currently allowed:** GitHub, PyPI, Anthropic API, VS Code, npm, Google Storage (for JAX wheels).
