@@ -3,10 +3,12 @@
 Watch a trained MaskablePPO agent play HackMatrix in visual mode.
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
+
 from sb3_contrib import MaskablePPO
+
 from hackmatrix import HackEnv
 
 

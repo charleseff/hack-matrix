@@ -3,13 +3,16 @@ Inspect the policy's action probabilities for debugging.
 Shows which actions the agent prefers in different states.
 """
 
-import numpy as np
-import sys
 import os
+import sys
+
+import numpy as np
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
+
 from hackmatrix import HackEnv
 from hackmatrix.training_utils import mask_fn
 

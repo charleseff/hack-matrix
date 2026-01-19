@@ -1,0 +1,18 @@
+# Ruff configuration
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort (import sorting)
+    "UP",     # pyupgrade
+]
+ignore = [
+    "E501",   # line too long (let formatter handle it)
+]
+
+[lint.isort]
+known-first-party = ["hackmatrix"]

@@ -6,7 +6,7 @@ Allows historical analysis of training runs and reward breakdown trends.
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 
 class TrainingDB:

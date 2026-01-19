@@ -1,0 +1,33 @@
+# Build artifacts
+.build/
+DerivedData/
+
+# Python
+python/venv/
+python/__pycache__/
+python/**/__pycache__/
+python/*.egg-info/
+python/.ruff_cache/
+
+# Training outputs
+python/models/
+python/logs/
+python/tensorboard_logs/
+
+# IDE
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# Git
+.git/
+.gitignore
+
+# Docs
+*.md
+!python/requirements.txt
+
+# Other
+.DS_Store
+*.png
+*.jpg

@@ -11,3 +11,6 @@ torch>=2.0.0
 tensorboard>=2.14.0
 matplotlib>=3.7.0
 wandb>=0.15.0
+
+# Development tools
+ruff>=0.1.0

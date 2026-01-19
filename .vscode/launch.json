@@ -2,7 +2,24 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug Headless CLI (SPM)",
+      "name": "Run GUI",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug GUI (with build)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Xcode - GUI)"
+    },
+    {
+      "name": "Debug Headless CLI",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/.build/debug/HackMatrix",
@@ -11,31 +28,35 @@
       "preLaunchTask": "Build (SPM - Headless)"
     },
     {
-      "name": "Debug GUI (Xcode)",
+      "name": "Debug Scenario",
       "type": "lldb",
       "request": "launch",
       "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
+      "args": [
+        "--debug-scenario"
+      ],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "Build (Xcode - GUI)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
       "args": [],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build (Xcode - GUI)"
+      "cwd": "${workspaceFolder:868-hack-2}",
+      "name": "Debug HackMatrix",
+      "target": "HackMatrix",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug HackMatrix"
     },
     {
-      "name": "Debug GUI - Visual CLI (Xcode)",
-      "type": "lldb",
+      "type": "swift",
       "request": "launch",
-      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
-      "args": ["--visual-cli"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build (Xcode - GUI)"
-    },
-    {
-      "name": "Debug GUI - Scenario (Xcode)",
-      "type": "lldb",
-      "request": "launch",
-      "program": "${workspaceFolder}/DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app/Contents/MacOS/HackMatrix",
-      "args": ["--debug-scenario"],
-      "cwd": "${workspaceFolder}",
-      "preLaunchTask": "Build (Xcode - GUI)"
+      "args": [],
+      "cwd": "${workspaceFolder:868-hack-2}",
+      "name": "Release HackMatrix",
+      "target": "HackMatrix",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release HackMatrix"
     }
   ]
 }

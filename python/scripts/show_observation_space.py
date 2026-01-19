@@ -2,9 +2,11 @@
 Inspect observation space structure and verify all game state is captured.
 """
 
-from hackmatrix import HackEnv
 import json
+
 import numpy as np
+
+from hackmatrix import HackEnv
 
 # Create environment
 env = HackEnv(debug_scenario=True)

@@ -1,0 +1,21 @@
+{
+	"name": "HackMatrix Dev",
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/github-cli:1": {},
+		"ghcr.io/devcontainers-extra/features/claude-code:1": {}
+	},
+	"postCreateCommand": "swift build -c release && pip3 install -r python/requirements.txt",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python"
+			]
+		}
+	},
+	"remoteEnv": {
+		"HACKMATRIX_BINARY": "${containerWorkspaceFolder}/.build/release/HackMatrix"
+	}
+}

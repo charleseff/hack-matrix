@@ -9,19 +9,25 @@ import json
 import os
 import subprocess
 import sys
-import numpy as np
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
-from collections import defaultdict, Counter
+
 import gymnasium as gym
+import numpy as np
 from gymnasium import spaces
-from .observation_utils import parse_observation, denormalize_player
+
+from .observation_utils import denormalize_player, parse_observation
 
 # MARK: Constants
 
 # App paths relative to this file
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # SPM build - headless CLI only (for training)
-_DEFAULT_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "..", ".build", "debug", "HackMatrix")
+# Check HACKMATRIX_BINARY env var first (for Docker), then fall back to relative path
+_DEFAULT_APP_PATH = os.environ.get(
+    "HACKMATRIX_BINARY",
+    os.path.join(_SCRIPT_DIR, "..", "..", ".build", "debug", "HackMatrix")
+)
 # Xcode build - full GUI app (for visual mode)
 _XCODE_APP_PATH = os.path.join(_SCRIPT_DIR, "..", "..", "DerivedData", "HackMatrix", "Build", "Products", "Debug", "HackMatrix.app", "Contents", "MacOS", "HackMatrix")
 

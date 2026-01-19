@@ -2,10 +2,12 @@
 Test script for the HackMatrix environment - takes random actions to verify functionality.
 """
 
-from hackmatrix import HackEnv
-import numpy as np
-import time
 import sys
+import time
+
+import numpy as np
+
+from hackmatrix import HackEnv
 
 
 def test_basic_functionality(visual=False, steps=5, delay=0.0):

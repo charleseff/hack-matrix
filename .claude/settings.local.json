@@ -38,7 +38,12 @@
       "Bash(timeout 120 python:*)",
       "Bash(docker pull:*)",
       "Bash(open -a OrbStack)",
-      "Bash(docker info:*)"
+      "Bash(docker info:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(wc:*)",
+      "WebFetch(domain:codewithandrea.com)",
+      "Bash(git -C /Users/charles/dev/868-hack-2 status --short)",
+      "Bash(git -C /Users/charles/dev/868-hack-2 add -A)"
     ]
   }
 }

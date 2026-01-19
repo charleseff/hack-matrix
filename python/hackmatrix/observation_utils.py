@@ -12,9 +12,9 @@ These utilities are shared across:
 - Any other scripts that need to display observations
 """
 
-import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
+import numpy as np
 
 # MARK: Observation Parsing
 

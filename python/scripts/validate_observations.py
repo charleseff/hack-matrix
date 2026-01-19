@@ -5,8 +5,10 @@ Tests across different game scenarios to ensure comprehensive coverage.
 """
 
 import sys
-import numpy as np
 from collections import defaultdict
+
+import numpy as np
+
 from hackmatrix import HackEnv
 
 

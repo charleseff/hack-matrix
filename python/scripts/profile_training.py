@@ -5,10 +5,13 @@ Measures environment step time vs NN training time.
 """
 
 import time
+
 import numpy as np
+
 from hackmatrix import HackEnv
 from hackmatrix.training_config import FAST_MODEL_CONFIG
 from hackmatrix.training_utils import make_env
+
 
 def profile_environment(num_steps=1000):
     """Profile environment performance."""

@@ -1,9 +1,9 @@
 """Shared utility functions for training scripts."""
 
 import numpy as np
+from gymnasium.wrappers import TimeLimit
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.monitor import Monitor
-from gymnasium.wrappers import TimeLimit
 
 from hackmatrix import HackEnv
 

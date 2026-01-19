@@ -5,8 +5,10 @@ Tests specific scenarios to ensure 100% coverage of all observation and reward c
 """
 
 import sys
-import numpy as np
 from collections import defaultdict
+
+import numpy as np
+
 from hackmatrix import HackEnv
 
 

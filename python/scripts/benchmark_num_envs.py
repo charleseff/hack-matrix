@@ -5,8 +5,8 @@ Benchmark different --num-envs values to find optimal parallelism.
 import os
 import sys
 import time
-import numpy as np
 
+import numpy as np
 from sb3_contrib import MaskablePPO
 from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.monitor import Monitor

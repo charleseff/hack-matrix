@@ -9,11 +9,11 @@ This validates that observation encoding/decoding works correctly across
 all game scenarios by showing the EXACT data fed to the ML model.
 """
 
-import subprocess
 import json
+import subprocess
 import sys
 from pathlib import Path
-import sys
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from hackmatrix.observation_utils import parse_observation, print_observation_detailed
 

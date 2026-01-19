@@ -18,6 +18,29 @@
 
 Python auto-selects the right binary based on mode.
 
+### Dev Container (Linux Training)
+
+Use VS Code Dev Containers for a full Linux dev environment with Swift, Python, and Claude Code.
+
+**Setup:**
+1. Install "Dev Containers" VS Code extension
+2. Command Palette → "Dev Containers: Reopen in Container"
+3. Wait for build (first run builds Swift and installs Python deps)
+
+**Inside the container:**
+```bash
+# Run training
+python3 python/scripts/train.py
+
+# Run Claude Code
+claude
+
+# Rebuild Swift after code changes
+swift build -c release
+```
+
+The `HACKMATRIX_BINARY` env var is automatically set to the built executable.
+
 ### Git Workflow
 
 - **Always create a new branch** for any non-trivial work

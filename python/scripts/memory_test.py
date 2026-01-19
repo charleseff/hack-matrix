@@ -74,12 +74,12 @@ Last run showed major memory increases:
 
 """
 
-import os
-import sys
 import gc
-import tracemalloc
+import os
 import subprocess
+import sys
 import time
+import tracemalloc
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
