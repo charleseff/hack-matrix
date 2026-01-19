@@ -1,12 +1,43 @@
-0a. Study `specs/*` with up to 5 parallel Sonnet subagents to learn the application specifications.
-0b. Study @IMPLEMENTATION_PLAN.md (if present) to understand the plan so far.
-0c. Study `src/lib/*` with up to 5 parallel Sonnet subagents to understand shared utilities & components.
-0d. For reference, the application source code is in `src/*`.
+# HackMatrix Planning Prompt
 
-1. Study @IMPLEMENTATION_PLAN.md (if present; it may be incorrect) and use up to 500 Sonnet subagents to study existing source code in `src/*` and compare it against `specs/*`. Use an Opus subagent to analyze findings, prioritize tasks, and create/update @IMPLEMENTATION_PLAN.md as a bullet point list sorted in priority of items yet to be implemented. Ultrathink. Consider searching for TODO, minimal implementations, placeholders, skipped/flaky tests, and inconsistent patterns. Study @IMPLEMENTATION_PLAN.md to determine starting point for research and keep it up to date with items considered complete/incomplete using subagents.
+## Context Gathering
 
-IMPORTANT: Plan only. Do NOT implement anything. Do NOT assume functionality is missing; confirm with code search first. Treat `src/lib` as the project's standard library for shared utilities and components. Prefer consolidated, idiomatic implementations there over ad-hoc copies.
+1. Read `specs/README.md` to understand the current project goal.
+2. Read all specs in `specs/*.md` to understand requirements.
+3. Read `IMPLEMENTATION_PLAN.md` (if present) to understand progress so far.
+4. Study relevant source code:
+   - `python/` - Python source (training, environments)
+   - `HackMatrix/` - Swift game source
+   - `CLAUDE.md` - Project conventions and architecture
 
-ULTIMATE GOAL: We want to achieve [[project-specific goal](specs/jax-dummy-env.md)]. Consider missing elements and plan accordingly. If an element is missing, search first to confirm it doesn't exist, then if needed author the specification at specs/FILENAME.md. If you create a new element then document the plan to implement it in @IMPLEMENTATION_PLAN.md using a subagent.
+## Planning Task
 
-COMPLETION: If the plan is complete and no further planning iterations are needed, output exactly this line as the final output: ${COMPLETION_PROMISE}
+Analyze the specs and current codebase to create or update `IMPLEMENTATION_PLAN.md`:
+
+1. **Verify existing implementation** - Search the codebase to confirm what already exists vs what's missing. Do NOT assume something is missing without checking first.
+
+2. **Identify discrepancies** - Compare specs against actual code. Note any mismatches that need resolution.
+
+3. **Prioritize tasks** - Order implementation tasks by dependency and importance. Mark completed items.
+
+4. **Be specific** - List exact files to create/modify with clear descriptions.
+
+## Output
+
+Update `IMPLEMENTATION_PLAN.md` with:
+- Current state assessment (what exists, what's missing)
+- Any spec discrepancies that need resolution
+- Prioritized task list with checkboxes
+- Success criteria
+
+## Rules
+
+- **Plan only** - Do NOT implement anything, only analyze and plan.
+- **Verify first** - Search code before claiming something is missing.
+- **Match project conventions** - Follow patterns in `CLAUDE.md`.
+- **Be concise** - Keep the plan actionable, not verbose.
+
+## Completion
+
+When the plan is complete and ready for implementation (no more analysis needed), output exactly:
+${COMPLETION_PROMISE}
