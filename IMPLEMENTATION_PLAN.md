@@ -25,15 +25,25 @@ Implement a minimal pure functional JAX environment (`jax_env.py`) as specified 
 
 | Component | Spec Says | Actual `gym_env.py` | Resolution |
 |-----------|-----------|---------------------|------------|
-| Player state | (9,) | (10,) | **Update spec** - includes `scheduledTasksDisabled` flag |
+| Player state | (9,) | (10,) | **Update spec** - includes `showActivated` + `scheduledTasksDisabled` flags |
 | Grid | (6, 6, 20) | (6, 6, 40) | **Update spec** - 40 features in reality |
 | Flags | (1,) separate | Embedded in player | **Update spec** - no separate flags component |
-| Turn count | In player state | Not in gym_env.py observation | **Verify** - may be in info dict |
 
-Before implementing, we need to:
-1. Decide: Should JAX env match the spec (simpler, 20 features) or match actual gym_env (40 features)?
-2. If matching gym_env: Update spec to reflect actual observation space
-3. Document the decision in the spec
+**Actual observation structure** (from `gym_env.py` and `observation_utils.py`):
+- **Player**: (10,) float32 - `[row, col, hp, credits, energy, stage, dataSiphons, baseAttack, showActivated, scheduledTasksDisabled]`
+- **Programs**: (23,) int32 - binary vector of owned programs
+- **Grid**: (6, 6, 40) float32 - 40 features per cell:
+  - Channels 0-3: Enemy type one-hot (virus, daemon, glitch, cryptog)
+  - Channel 4: Enemy HP
+  - Channel 5: Enemy stunned
+  - Channels 6-8: Block type one-hot (data, program, question)
+  - Channel 9: Block points
+  - Channel 10: Block siphoned
+  - Channels 11-33: Program type one-hot (23 programs)
+  - Channel 34: Transmission spawn count
+  - Channel 35: Transmission turns
+  - Channels 36-37: Credits, energy
+  - Channels 38-39: Data siphon cell, exit cell
 
 **Recommendation**: JAX env should match actual `gym_env.py` for parity testing to work correctly.
 
@@ -43,6 +53,7 @@ Before implementing, we need to:
 - [ ] **P1.1** Update `specs/jax-dummy-env.md` observation space to match `gym_env.py`:
   - Player state: (10,) with both `showActivated` and `scheduledTasksDisabled`
   - Grid: (6, 6, 40) features
+  - Programs: (23,) int32 binary vector
   - Remove separate flags component
 - [ ] **P1.2** Update CLAUDE.md observation space documentation to match reality
 
@@ -61,7 +72,7 @@ Before implementing, we need to:
     - `player_state`: (10,) float32
     - `programs`: (23,) int32
     - `grid`: (6, 6, 40) float32
-  - Constants: `NUM_ACTIONS=28`, `GRID_SIZE=6`, `GRID_FEATURES=40`, `PLAYER_STATE_SIZE=10`
+  - Constants: `NUM_ACTIONS=28`, `GRID_SIZE=6`, `GRID_FEATURES=40`, `PLAYER_STATE_SIZE=10`, `NUM_PROGRAMS=23`
   - `reset(key)` function returning zeroed observation
   - `step(state, action, key)` function with 10% termination probability
   - `get_valid_actions(state)` returning mask for actions 0-3 only

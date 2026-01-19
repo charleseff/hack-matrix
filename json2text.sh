@@ -19,10 +19,26 @@ while IFS= read -r line; do
                 echo "$text"
             fi
 
-            # Extract tool use
-            tool=$(echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") | "\(.name): \(.input | tostring | .[0:100])"' 2>/dev/null)
-            if [ -n "$tool" ]; then
-                echo "  → $tool"
+            # Count tool uses to detect parallel calls
+            tool_count=$(echo "$line" | jq '[.message.content[]? | select(.type=="tool_use")] | length' 2>/dev/null)
+
+            if [ "$tool_count" -gt 1 ] 2>/dev/null; then
+                echo "  ⚡ $tool_count tools in parallel:"
+            fi
+
+            # Extract tool uses
+            echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") |
+                if .name == "Task" then
+                    "  🤖 AGENT[\(.input.subagent_type // "unknown")]: \(.input.description // .input.prompt[0:60])"
+                else
+                    "  → \(.name): \(.input | tostring | .[0:80])"
+                end' 2>/dev/null
+            ;;
+        user)
+            # Check for agent results (Task tool results)
+            agent_result=$(echo "$line" | jq -r '.tool_use_result.agent_id // empty' 2>/dev/null)
+            if [ -n "$agent_result" ]; then
+                echo "  ✓ Agent completed: $agent_result"
             fi
             ;;
         result)
