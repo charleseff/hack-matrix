@@ -1,13 +1,30 @@
 {
 	"name": "HackMatrix Dev",
 	"build": {
-		"dockerfile": "Dockerfile"
+		"dockerfile": "Dockerfile",
+		"context": ".."
 	},
 	"features": {
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"configureZshAsDefaultShell": true
+		},
 		"ghcr.io/devcontainers/features/github-cli:1": {},
-		"ghcr.io/devcontainers-extra/features/claude-code:1": {}
+		"ghcr.io/stu-bell/devcontainer-features/claude-code:0": {}
 	},
-	"postCreateCommand": "swift build -c release && pip3 install -r python/requirements.txt",
+	"runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+	"mounts": [
+		"source=claude-config,target=/home/vscode/.claude,type=volume",
+		"source=${localEnv:HOME}/.claude.json,target=/home/vscode/.claude.json,type=bind",
+		"source=${localEnv:HOME}/dotfiles/home/.claude/settings.json,target=/home/vscode/.claude/settings.json,type=bind",
+		"source=${localEnv:HOME}/dotfiles/home/.claude/commands,target=/home/vscode/.claude/commands,type=bind",
+		"source=${localEnv:HOME}/dotfiles/home/.claude/hooks,target=/home/vscode/.claude/hooks,type=bind",
+		"source=${localEnv:HOME}/dotfiles/home/.claude/skills,target=/home/vscode/.claude/skills,type=bind",
+		"source=${localEnv:HOME}/dotfiles/home/.claude/statusline-command.py,target=/home/vscode/.claude/statusline-command.py,type=bind",
+		"source=zsh-history,target=/commandhistory,type=volume"
+	],
+	"updateRemoteUserUID": true,
+	"postCreateCommand": "sudo chown -R $(whoami) /commandhistory && swift build -c release",
+	"postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
 	"customizations": {
 		"vscode": {
 			"extensions": [
