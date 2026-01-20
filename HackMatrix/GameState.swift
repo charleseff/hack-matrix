@@ -1473,11 +1473,13 @@ class GameState {
 
         case .poly:
             // Randomize enemy types (each enemy becomes a DIFFERENT type)
+            // Damage carries over: if enemy had (maxHP - currentHP) damage, new enemy keeps that damage
             for enemy in enemies {
+                let damageDealt = enemy.type.maxHP - enemy.hp
                 let otherTypes = EnemyType.allCases.filter { $0 != enemy.type }
                 let newType = otherTypes.randomElement()!
                 enemy.type = newType
-                enemy.hp = newType.maxHP
+                enemy.hp = newType.maxHP - damageDealt
 
                 // If converted to Cryptog, initialize last known position
                 if newType == .cryptog {
@@ -1493,6 +1495,8 @@ class GameState {
                     }
                 }
             }
+            // Remove any enemies that died from damage carry-over
+            enemiesKilled += removeDeadEnemies()
 
         case .reduc:
             // Reduce block spawn counts by 1 (minimum 0)
