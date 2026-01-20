@@ -10,14 +10,14 @@ Run with: cd python && source venv/bin/activate && python scripts/train_jax.py
 import sys
 from pathlib import Path
 
-# Add parent directory to path for jax_env import
+# Add python directory to path for hackmatrix import
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import jax
 import jax.numpy as jnp
 from typing import NamedTuple
 
-import jax_env
+from hackmatrix import jax_env
 
 
 class Transition(NamedTuple):

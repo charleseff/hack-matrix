@@ -6,10 +6,15 @@ not behavioral equivalence. The Swift env doesn't support seeding yet, and
 both implementations have inherent randomness, so exact value comparisons
 are not possible at this stage.
 
-Run with: cd python && source venv/bin/activate && python test_env_parity.py
+Run with: cd python && source venv/bin/activate && python scripts/test_env_parity.py
 """
 
 import sys
+from pathlib import Path
+
+# Add python directory to path for hackmatrix import
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import numpy as np
 from typing import Protocol
 
@@ -63,7 +68,7 @@ class JaxEnvAdapter:
 
     def __init__(self):
         import jax
-        import jax_env
+        from hackmatrix import jax_env
 
         self.jax = jax
         self.env = jax_env
@@ -187,7 +192,7 @@ def test_jax_step_return_types():
 def test_jax_batched_operations():
     """Verify batched JAX operations work correctly."""
     import jax
-    import jax_env
+    from hackmatrix import jax_env
 
     batch_size = 4
     keys = jax.random.split(jax.random.PRNGKey(0), batch_size)
