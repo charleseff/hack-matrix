@@ -118,12 +118,14 @@ class GameLogicTests {
     static func testScheduledTaskIntervalMinimum() {
         print("\nTest: Scheduled task interval minimum")
         let state = GameState()
-        state.scheduledTaskInterval = 1
-        state.player.dataSiphons = 1
+        state.scheduledTaskInterval = 5
+        state.player.dataSiphons = 2
 
         _ = state.performSiphon()
+        assertEqual(state.scheduledTaskInterval, 4, "Interval should decrease to 4")
 
-        assertEqual(state.scheduledTaskInterval, 1, "Interval should not go below 1")
+        _ = state.performSiphon()
+        assertEqual(state.scheduledTaskInterval, 4, "Interval should not go below 4")
     }
 
     static func testScheduledTaskTriggersAtCorrectTurn() {

@@ -521,8 +521,8 @@ class GameState {
 
         if turnCount >= nextScheduledTaskTurn {
             spawnRandomTransmissions(count: 1, isFromScheduledTask: true)
-            // no fewer than 4 turns between spawns
-            nextScheduledTaskTurn = turnCount + max(4, scheduledTaskInterval)
+            // scheduledTaskInterval is guaranteed >= 4
+            nextScheduledTaskTurn = turnCount + scheduledTaskInterval
         }
     }
 
@@ -866,7 +866,7 @@ class GameState {
         // Siphoning affects scheduled task timing:
         // - Permanently decreases interval (spawns faster over time)
         // - Temporarily adds delay to current countdown (immediate relief)
-        scheduledTaskInterval = max(1, scheduledTaskInterval - 1)
+        scheduledTaskInterval = max(4, scheduledTaskInterval - 1)
         nextScheduledTaskTurn += 5
 
         // Don't advance turn here - let caller handle animated turn flow
