@@ -23,23 +23,25 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 
 ### What's Missing (Verified)
 
-| Component | Priority | Notes |
-|-----------|----------|-------|
-| `set_state`/`setState` JSON command | **P0** | Core blocker - not in Swift protocol (verified via search) |
-| pytest dependency | **P0** | Not in `python/requirements.txt` |
-| `python/tests/` directory | **P0** | Does not exist (verified via glob) |
-| `EnvInterface` Protocol (full spec) | **P1** | Current `EnvAdapter` lacks `set_state()` method |
-| Comprehensive test cases | **P2** | Movement, siphon, programs, enemies, turns, stages, rewards |
-| Action mask verification tests | **P2** | Per spec requirements |
-| Reward verification tests | **P2** | Per spec requirements |
-| `specs/game-mechanics.md` | **P1** | Authoritative mechanics reference |
+*All items completed - see Phase 1 and Phase 2 implementation tasks below.*
 
-### Spec Discrepancies
+| Component | Status | Location |
+|-----------|--------|----------|
+| `set_state`/`setState` JSON command | **Complete** | `HackMatrix/GameCommandProtocol.swift`, `HeadlessGame.swift` |
+| pytest dependency | **Complete** | `python/requirements.txt` |
+| `python/tests/` directory | **Complete** | 10 test files, 125 tests |
+| `EnvInterface` Protocol (full spec) | **Complete** | `python/tests/env_interface.py` |
+| Comprehensive test cases | **Complete** | Movement, siphon, programs, enemies, turns, stages, rewards |
+| Action mask verification tests | **Complete** | `python/tests/test_action_mask.py` |
+| Reward verification tests | **Complete** | `python/tests/test_rewards.py` |
+| `specs/game-mechanics.md` | **Complete** | Authoritative mechanics reference |
 
-1. **Interface location**: Spec specifies `python/tests/env_interface.py`, current adapters in `python/scripts/test_env_parity.py`
-2. **Wrapper naming**: Spec uses `SwiftEnvWrapper`/`JaxEnvWrapper`, current code uses `SwiftEnvAdapter`/`JaxEnvAdapter`
-3. **`set_state` missing**: Critical feature not yet in Swift JSON protocol (confirmed via code search)
-4. **pytest missing**: Not in requirements.txt, needs to be added
+### Spec Discrepancies (Resolved)
+
+1. **Interface location**: ✅ Implemented at `python/tests/env_interface.py` per spec
+2. **Wrapper naming**: ✅ Using `SwiftEnvWrapper`/`JaxEnvWrapper` in tests (legacy adapters kept in scripts/)
+3. **`set_state`**: ✅ Implemented in Swift protocol and HeadlessGame
+4. **pytest**: ✅ Added to requirements.txt
 
 ## Game Mechanics Reference
 
