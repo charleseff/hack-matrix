@@ -8,6 +8,7 @@ protocol GameCommandExecutor: AnyObject {
     func executeReset() -> GameObservation
     func executeStep(actionIndex: Int) -> (GameObservation, Double, Bool, [String: Any])
     func executeGetValidActions() -> [Int]
+    func executeSetState(stateData: SetStateData) -> GameObservation
 }
 
 // MARK: - Command Structure
@@ -16,6 +17,70 @@ protocol GameCommandExecutor: AnyObject {
 struct Command: Codable {
     let action: String
     let actionIndex: Int?
+    let state: SetStateData?
+}
+
+// MARK: - SetState Data Structures
+
+/// Data structure for setState command - used to set up specific game states for testing
+struct SetStateData: Codable {
+    let player: SetStatePlayer
+    let enemies: [SetStateEnemy]?
+    let transmissions: [SetStateTransmission]?
+    let blocks: [SetStateBlock]?
+    let resources: [SetStateResource]?
+    let ownedPrograms: [Int]?  // Action indices (5-27)
+    let stage: Int?
+    let turn: Int?
+    let showActivated: Bool?
+    let scheduledTasksDisabled: Bool?
+}
+
+struct SetStatePlayer: Codable {
+    let row: Int
+    let col: Int
+    let hp: Int?
+    let credits: Int?
+    let energy: Int?
+    let dataSiphons: Int?
+    let attackDamage: Int?
+    let score: Int?
+}
+
+struct SetStateEnemy: Codable {
+    let type: String  // "virus", "daemon", "glitch", "cryptog"
+    let row: Int
+    let col: Int
+    let hp: Int
+    let stunned: Bool?
+}
+
+struct SetStateTransmission: Codable {
+    let row: Int
+    let col: Int
+    let turnsRemaining: Int
+    let enemyType: String
+}
+
+struct SetStateBlock: Codable {
+    let row: Int
+    let col: Int
+    let type: String  // "data" or "program"
+    // Data block fields
+    let points: Int?
+    let spawnCount: Int?
+    let siphoned: Bool?
+    // Program block fields
+    let programType: String?
+    let programActionIndex: Int?
+}
+
+struct SetStateResource: Codable {
+    let row: Int
+    let col: Int
+    let credits: Int?
+    let energy: Int?
+    let dataSiphon: Bool?
 }
 
 // MARK: - Stdin Command Reader
@@ -99,6 +164,14 @@ class StdinCommandReader {
                 "playerFeatures": 9,  // row, col, hp, credits, energy, stage, turn, dataSiphons, baseAttack
                 "cellFeatures": 20    // Approximate - varies by cell
             ])
+
+        case "setState":
+            guard let stateData = command.state else {
+                sendError("Missing state data for setState command")
+                return
+            }
+            let obs = executor.executeSetState(stateData: stateData)
+            sendResponse(["observation": encodeObservation(obs)])
 
         default:
             sendError("Unknown command: \(command.action)")

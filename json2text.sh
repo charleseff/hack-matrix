@@ -30,8 +30,20 @@ while IFS= read -r line; do
             echo "$line" | jq -r '.message.content[]? | select(.type=="tool_use") |
                 if .name == "Task" then
                     "  🤖 AGENT[\(.input.subagent_type // "unknown")]: \(.input.description // .input.prompt[0:60])"
+                elif .name == "Read" then
+                    "  → Read: \(.input.file_path)"
+                elif .name == "Glob" then
+                    "  → Glob: \(.input.pattern) in \(.input.path // ".")"
+                elif .name == "Grep" then
+                    "  → Grep: \"\(.input.pattern)\" in \(.input.path // ".")"
+                elif .name == "Bash" then
+                    "  → Bash: \(.input.command | .[0:120])\(if (.input.command | length) > 120 then "..." else "" end)"
+                elif .name == "Edit" then
+                    "  → Edit: \(.input.file_path)"
+                elif .name == "Write" then
+                    "  → Write: \(.input.file_path)"
                 else
-                    "  → \(.name): \(.input | tostring | .[0:80])"
+                    "  → \(.name): \(.input | tostring | .[0:150])\(if (.input | tostring | length) > 150 then "..." else "" end)"
                 end' 2>/dev/null
             ;;
         user)

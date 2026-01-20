@@ -137,20 +137,21 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 
 ### Phase 0: Corrections & Documentation
 
-- [ ] **0.1** Create `specs/game-mechanics.md` with authoritative mechanics reference
+- [x] **0.1** Create `specs/game-mechanics.md` with authoritative mechanics reference (already exists)
 - [x] **0.2** Update `IMPLEMENTATION_PLAN.md` with all corrections from `everything_wrong_with_impl_plan.txt`
 
 ### Phase 1: Interface & Infrastructure
 
-- [ ] **1.1** Add `pytest>=7.0.0` to `python/requirements.txt`
-- [ ] **1.2** Create `python/tests/` directory structure with `__init__.py`
-- [ ] **1.3** Create `python/tests/conftest.py` with pytest fixtures
-- [ ] **1.4** Create `python/tests/env_interface.py` with `EnvInterface` Protocol and dataclasses
-- [ ] **1.5** Add `setState` command to Swift JSON protocol (`GameCommandProtocol.swift`)
-- [ ] **1.6** Implement `executeSetState()` in `HeadlessGame.swift`
-- [ ] **1.7** Create `python/tests/swift_env_wrapper.py` implementing `EnvInterface`
-- [ ] **1.8** Create `python/tests/jax_env_wrapper.py` skeleton implementing `EnvInterface`
-- [ ] **1.9** Create `python/tests/test_interface_smoke.py`
+- [x] **1.1** Add `pytest>=7.0.0` to `python/requirements.txt`
+- [x] **1.2** Create `python/tests/` directory structure with `__init__.py`
+- [x] **1.3** Create `python/tests/conftest.py` with pytest fixtures
+- [x] **1.4** Create `python/tests/env_interface.py` with `EnvInterface` Protocol and dataclasses
+- [x] **1.5** Add `setState` command to Swift JSON protocol (`GameCommandProtocol.swift`)
+- [x] **1.6** Implement `executeSetState()` in `HeadlessGame.swift` and `HeadlessGameCLI.swift`
+- [x] **1.7** Create `python/tests/swift_env_wrapper.py` implementing `EnvInterface`
+- [x] **1.8** Create `python/tests/jax_env_wrapper.py` skeleton implementing `EnvInterface`
+- [x] **1.9** Create `python/tests/test_interface_smoke.py`
+- [x] **1.10** Smoke tests pass (7/7 tests passing)
 
 ### Phase 2: Comprehensive Test Cases
 

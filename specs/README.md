@@ -14,6 +14,7 @@ Comprehensive test suite for validating environment implementations through a co
 
 | Spec | Status | Description |
 |------|--------|-------------|
+| [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [jax-dummy-env.md](./jax-dummy-env.md) | **Complete** | Minimal JAX dummy environment for plug-and-play testing with Swift env |
 | [env-parity-tests.md](./env-parity-tests.md) | **Active** | Interface-based test suite for validating env implementations |
 | [jax-implementation.md](./jax-implementation.md) | **Deferred** | Full JAX port of game logic (depends on parity tests) |

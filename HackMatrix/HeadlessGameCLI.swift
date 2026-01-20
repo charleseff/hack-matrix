@@ -75,4 +75,12 @@ public class HeadlessGameCLI: GameCommandExecutor {
         guard let game = game else { return [] }
         return game.getValidActions().map { $0.toIndex() }
     }
+
+    func executeSetState(stateData: SetStateData) -> GameObservation {
+        // Create new game instance if needed
+        if game == nil {
+            game = HeadlessGame()
+        }
+        return game!.setState(stateData: stateData)
+    }
 }
