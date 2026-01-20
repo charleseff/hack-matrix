@@ -4,9 +4,9 @@ Design documents and implementation specifications for HackMatrix.
 
 ## Current Focus
 
-**Active spec:** [jax-implementation.md](./jax-implementation.md)
+**Active spec:** [test-reorganization.md](./test-reorganization.md)
 
-Full JAX port of game logic, validated against the parity test suite.
+Reorganize tests, add scheduled task testing, and create implementation-level tests for hidden state.
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -17,13 +17,16 @@ Full JAX port of game logic, validated against the parity test suite.
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [jax-dummy-env.md](./jax-dummy-env.md) | **Complete** | Minimal JAX dummy environment for plug-and-play testing with Swift env |
 | [env-parity-tests.md](./env-parity-tests.md) | **Complete** | Interface-based test suite for validating env implementations |
-| [jax-implementation.md](./jax-implementation.md) | **Active** | Full JAX port of game logic (depends on parity tests) |
+| [test-reorganization.md](./test-reorganization.md) | **Active** | Reorganize tests, add scheduled task testing, implementation-level tests |
+| [ci-setup.md](./ci-setup.md) | **Draft** | GitHub Actions CI for Swift and Python tests |
+| [jax-implementation.md](./jax-implementation.md) | **Deferred** | Full JAX port of game logic (depends on test-reorganization) |
 
 ## Usage
 
 Before starting a major feature or architectural change, create a spec document here.
 
 **Status lifecycle:**
+- **Draft** - Spec needs further discussion before implementation
 - **Active** - Currently being implemented
 - **Deferred** - Planned but not yet started (may depend on other specs)
 - **Complete** - Fully implemented and verified
