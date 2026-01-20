@@ -124,6 +124,12 @@ A smoke test verifies the skeleton implements the interface. Real tests will fai
 
 ## Implementation Order
 
+### Phase 0: Corrections & Game Mechanics Documentation
+
+1. **Read `everything_wrong_with_impl_plan.txt`** — absorb all corrections
+2. **Update `IMPLEMENTATION_PLAN.md`** — fix incorrect test specifications
+3. **Create `specs/game-mechanics.md`** — document authoritative game mechanics based on Swift code analysis
+
 ### Phase 1: Interface & Both Wrappers
 
 1. Define the `EnvInterface` protocol in Python
@@ -141,7 +147,34 @@ Enumerate and implement all test cases (see Test Cases section below). Use Swift
 
 ## Test Cases
 
-> **Note**: This section to be expanded during planning phase. The planner should explore the Swift codebase to extract all game mechanics and enumerate exhaustive test cases.
+> **Planning Phase Requirement**: Before implementation, expand `IMPLEMENTATION_PLAN.md` with fully detailed test cases. Each test case listed below (e.g., "Move to empty cell") must be specified with:
+>
+> 1. **Preconditions**: Exact `set_state` setup (player position, enemies, blocks, resources, owned programs, etc.)
+> 2. **Action**: Which action index to execute
+> 3. **Expected Observation Changes**: Specific changes to player state (10 values), grid channels (40 per cell), programs array
+> 4. **Expected Reward**: Exact reward value with breakdown of components (per `RewardCalculator.swift`)
+> 5. **Expected Valid Actions**: How the action mask should change after the action
+> 6. **Variants**: All scenario variations that need separate test functions
+>
+> The planner must explore the Swift codebase (`GameState.swift`, `RewardCalculator.swift`, `Program.swift`, `ObservationBuilder.swift`, etc.) to extract exact mechanics and enumerate all edge cases. The resulting `IMPLEMENTATION_PLAN.md` will be substantially larger than the current version.
+
+> **CRITICAL: Corrections Required**
+>
+> The file `everything_wrong_with_impl_plan.txt` documents known errors and missing details in the current `IMPLEMENTATION_PLAN.md`. Before implementing tests, the planner **MUST**:
+>
+> 1. Read and absorb all corrections in `everything_wrong_with_impl_plan.txt`
+> 2. Update `IMPLEMENTATION_PLAN.md` to fix incorrect test specifications
+> 3. Add any missing test cases identified in the corrections file
+> 4. Create or update a game mechanics reference spec based on learnings
+>
+> Key corrections include (but are not limited to):
+> - **Credits/energy are NOT collected by moving** — only by siphoning blocks
+> - **Data siphons ARE collected by moving** — walk into a cell with a data siphon to pick it up
+> - **Siphon is always valid** when player has data siphons (not dependent on adjacent blocks)
+> - **Line-of-sight attacks** — player attacks enemies in line-of-sight even when >1 cell away
+> - **Program side effects** — many programs have stun effects, block destruction, etc. not documented
+> - **Data blocks** always have matching score and transmission count
+> - **Program applicability** — many conditions beyond ownership/resources (see `isProgramApplicable` in `GameState.swift`)
 
 ### Categories
 
@@ -150,26 +183,45 @@ Enumerate and implement all test cases (see Test Cases section below). Use Swift
 - Move to empty cell
 - Move into wall (blocked)
 - Move off grid edge (blocked)
-- Move onto cell with credits
-- Move onto cell with energy
-- Move onto cell with both resources
-- Move into enemy (attack, kill if damage >= HP)
-- Move into enemy (attack, enemy survives)
-- Move into block (blocked? or attack?)
-- Move into transmission (?)
+- ~~Move onto cell with credits~~ *(INCORRECT: credits/energy are NOT collected by moving)*
+- ~~Move onto cell with energy~~ *(INCORRECT: credits/energy are NOT collected by moving)*
+- ~~Move onto cell with both resources~~ *(INCORRECT: credits/energy are NOT collected by moving)*
+- **Move onto cell with data siphon**: Player collects the data siphon (this IS collected by moving)
+- Move into adjacent enemy (attack, kill if damage >= HP)
+- Move into adjacent enemy (attack, enemy survives)
+- Move into block (blocked)
+- Move into transmission (attack, destroys transmission)
+- **Line-of-sight attack**: Direction toward enemy >1 cell away triggers attack (not move)
+- **Line-of-sight attack on block**: Enemy on block in line-of-sight is attacked
 
 #### Siphon Action (4)
 
-- Siphon adjacent block (gain resources based on block type)
-- Siphon with no adjacent block (invalid action?)
-- Siphon block that's already been siphoned
-- Siphon effects on different block types
+- Siphon adjacent block (gain score, spawn transmissions)
+- ~~Siphon with no adjacent block (invalid action?)~~ *(INCORRECT: siphon is always valid when player has data siphons)*
+- ~~Siphon block that's already been siphoned~~ *(INCORRECT: siphon validity doesn't depend on block state)*
+- Siphon effects on different block types (data blocks vs program blocks)
+- **Data block invariant**: score and spawnCount are always equal
+- Siphon reveals resources underneath block (after block is siphoned)
+- Siphon spawns transmissions based on block's spawnCount
+- **Data siphon acquisition**: Player gains data siphons by **walking into a cell containing one** (or via SIPH+ program)
 
 #### Programs (5-27)
 
 Each of the 23 programs needs tests for their specific effects and edge cases.
 
 > **TODO**: List all 23 programs and their expected behaviors
+
+**Important program details** (see `everything_wrong_with_impl_plan.txt` for full list):
+- Many programs have **stun effects** in addition to damage (DEBUG, ROW, COL, ANTI-V, D_BOM)
+- **CRASH** destroys blocks (siphoned or not), exposing resources underneath
+- **WARP** teleports to a random enemy's position, killing that enemy
+- **POLY** edge case: Daemon with 1 HP → Cryptog with 0 HP → dead
+- **UNDO** reverses enemy positions too, not just player
+- **SHOW** makes transmissions display incoming enemy type
+- **SIPH+** grants player a data siphon (alternative to walking into data siphon cells)
+- **D_BOM** does splash damage/stun to enemies adjacent to the destroyed daemon
+- **HACK** destroys siphoned blocks, exposing resources underneath
+- **Program applicability**: Many conditions beyond ownership/resources — see `isProgramApplicable` in `GameState.swift`
 
 Note: We don't test "program not owned" or "insufficient energy" as invalid actions—action masking prevents these. Instead, we verify the action mask is correct (see Action Masking section).
 
@@ -196,6 +248,7 @@ Note: We don't test "program not owned" or "insufficient energy" as invalid acti
   - Number of enemy spawns
   - Positions of enemies carried over
   - Player state preserved/reset appropriately
+  - **Data block invariant**: all data blocks have matching score and spawnCount
 
 #### Edge Cases
 
@@ -209,14 +262,18 @@ Reward verification is critical for RL training correctness. Every test should v
 Reward tests should cover:
 - Killing an enemy → positive reward (verify exact value)
 - Taking damage → negative reward (verify exact value)
-- Collecting credits → reward (if applicable)
-- Collecting energy → reward (if applicable)
+- ~~Collecting credits → reward (if applicable)~~ *(resources collected via siphon, not movement)*
+- ~~Collecting energy → reward (if applicable)~~ *(resources collected via siphon, not movement)*
 - Completing a stage → reward
 - Player death → terminal reward
 - Neutral actions (moving to empty cell) → zero or baseline reward
 - Program execution rewards (if any)
 - Siphon rewards
 - Compound scenarios (e.g., kill enemy but take damage in same turn)
+
+**Resource verification** (critical for parity):
+- Program costs: verify correct credits/energy deducted for each program
+- Test setup must ensure player has sufficient resources before executing programs
 
 > **TODO**: Extract exact reward values from Swift implementation during planning phase.
 
@@ -227,10 +284,11 @@ Action mask verification is a core part of every test. After each `step()`, test
 Action mask tests should cover:
 - Movement blocked by walls/edges → those directions masked
 - Movement blocked by blocks → masked
-- Siphon only valid when adjacent to unsiphoned block
+- ~~Siphon only valid when adjacent to unsiphoned block~~ *(INCORRECT: siphon valid when player has data siphons)*
+- **Siphon valid when player has data siphons available** (regardless of adjacent blocks)
 - Programs masked when not owned
-- Programs masked when insufficient energy
-- Programs masked based on other conditions (e.g., target requirements)
+- Programs masked when insufficient credits/energy
+- Programs masked based on other conditions (see `isProgramApplicable` in `GameState.swift`)
 - All 4 directions independently calculated
 - Mask changes correctly as state changes (e.g., gain energy → program becomes valid)
 
@@ -298,6 +356,9 @@ def test_stage_transition_enemy_count(env):
 
 | File | Purpose |
 |------|---------|
+| `everything_wrong_with_impl_plan.txt` | **CRITICAL**: Corrections to IMPLEMENTATION_PLAN.md — must be absorbed before implementation |
+| `IMPLEMENTATION_PLAN.md` | Detailed test specifications (must be updated with corrections) |
+| `specs/game-mechanics.md` | *(To be created)* Authoritative game mechanics reference based on Swift code analysis |
 | `python/tests/conftest.py` | pytest fixtures |
 | `python/tests/env_interface.py` | `EnvInterface` protocol definition |
 | `python/tests/swift_env_wrapper.py` | Swift env wrapper implementation |
@@ -319,10 +380,12 @@ def test_stage_transition_enemy_count(env):
 
 ## Success Criteria
 
-1. `EnvInterface` protocol defined
-2. `SwiftEnvWrapper` fully implements `EnvInterface`
-3. `JaxEnvWrapper` skeleton implements `EnvInterface` (stub returns)
-4. Interface smoke tests pass for both wrappers
-5. `set_state` functionality added to Swift JSON protocol
-6. All comprehensive tests pass against Swift environment
-7. Test coverage includes all programs, all action types, key edge cases
+1. **Corrections absorbed**: `everything_wrong_with_impl_plan.txt` reviewed and `IMPLEMENTATION_PLAN.md` updated
+2. **Game mechanics documented**: `specs/game-mechanics.md` created with authoritative mechanics reference
+3. `EnvInterface` protocol defined
+4. `SwiftEnvWrapper` fully implements `EnvInterface`
+5. `JaxEnvWrapper` skeleton implements `EnvInterface` (stub returns)
+6. Interface smoke tests pass for both wrappers
+7. `set_state` functionality added to Swift JSON protocol
+8. All comprehensive tests pass against Swift environment
+9. Test coverage includes all programs, all action types, key edge cases
