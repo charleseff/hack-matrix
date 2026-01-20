@@ -192,12 +192,14 @@ Swift responds with JSON on stdout:
 
 **Grid** (6x6x40): Each cell has 40 features encoding enemies, blocks, transmissions, resources, special cells.
 
-### Running Tests
+### Running Python Tests
 
 ```bash
-cd python
-source venv/bin/activate
-python test_env.py
+# Run all tests with pytest
+cd python && source venv/bin/activate && pytest tests/ -v
+
+# Run specific test file
+cd python && source venv/bin/activate && pytest tests/test_movement.py -v
 ```
 
 ### Key Files
