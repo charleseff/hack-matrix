@@ -14,7 +14,10 @@ These tests verify that the Swift environment correctly implements movement mech
 as documented in specs/game-mechanics.md.
 """
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    from . import pytest_compat as pytest
 import numpy as np
 
 from .env_interface import (

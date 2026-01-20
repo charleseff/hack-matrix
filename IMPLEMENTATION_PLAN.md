@@ -155,7 +155,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 
 ### Phase 2: Comprehensive Test Cases
 
-**Status**: In progress - core tests implemented, all passing
+**Status**: In progress - 77 tests passing (movement, siphon, programs, enemies, turns)
 
 #### Movement Tests (`test_movement.py`) - IMPLEMENTED
 
@@ -469,6 +469,8 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 
 **Status**: Core tests implemented (PUSH, PULL, POLY, WAIT, SIPH+, RESET, program chaining)
 
+**Note**: Additional test files `test_enemies.py` and `test_turns.py` have been implemented with comprehensive tests for enemy behavior and turn mechanics.
+
 **IMPORTANT**: All program tests must verify:
 1. Correct resource deduction (credits/energy per Program.swift costs)
 2. Program applicability conditions (per `isProgramApplicable`)
@@ -516,7 +518,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Enemy at (5,3) → (4,3) (pulled toward player)
 - **Applicability**: Requires enemies to exist
 
-- [ ] **2.18** CRASH (index 7)
+- [x] **2.18** CRASH (index 7)
 
 **Test: `test_crash_clears_surrounding`**
 - **Preconditions**:
@@ -548,7 +550,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires blocks/enemies/transmissions in 8 surrounding cells
 - CRASH destroys ALL blocks (siphoned or not), exposing resources underneath
 
-- [ ] **2.19** WARP (index 8)
+- [x] **2.19** WARP (index 8)
 
 **Test: `test_warp_to_random_enemy_kills_it`**
 - **Preconditions**:
@@ -642,7 +644,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Key**: This is the ONLY program that ends the turn
 - **Applicability**: Always applicable
 
-- [ ] **2.22** DEBUG (index 11)
+- [x] **2.22** DEBUG (index 11)
 
 **Test: `test_debug_damages_and_stuns_enemies_on_blocks`**
 - **Preconditions**:
@@ -673,7 +675,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires enemies on blocks to exist
 - DEBUG also STUNS surviving enemies on blocks
 
-- [ ] **2.23** ROW (index 12)
+- [x] **2.23** ROW (index 12)
 
 **Test: `test_row_attacks_and_stuns_all_in_row`**
 - **Preconditions**:
@@ -701,7 +703,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires enemies in player's row
 - ROW also STUNS surviving enemies
 
-- [ ] **2.24** COL (index 13)
+- [x] **2.24** COL (index 13)
 
 **Test: `test_col_attacks_and_stuns_all_in_column`**
 - **Preconditions**:
@@ -795,7 +797,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected Reward**: 1.0 (data siphon collected reward)
 - **Applicability**: Always applicable
 
-- [ ] **2.28** EXCH (index 17)
+- [x] **2.28** EXCH (index 17)
 
 **Test: `test_exch_converts_credits_to_energy`**
 - **Preconditions**:
@@ -816,7 +818,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 
 **Note**: The cost is 4C and the exchange adds 4E. So with 4C you pay cost and gain 4E. Testing with 8C to be safe.
 
-- [ ] **2.29** SHOW (index 18)
+- [x] **2.29** SHOW (index 18)
 
 **Test: `test_show_reveals_cryptogs_and_transmissions`**
 - **Preconditions**:
@@ -864,7 +866,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected Reward**: HP recovery: 1 × 1.0 = 1.0, MINUS program waste: -0.3
 - **Net Reward**: 0.7
 
-- [ ] **2.31** CALM (index 20)
+- [x] **2.31** CALM (index 20)
 
 **Test: `test_calm_disables_scheduled_spawns`**
 - **Preconditions**:
@@ -884,7 +886,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - `scheduledTasksDisabled`: False → True
 - **Applicability**: Requires `scheduledTasksDisabled` to be false
 
-- [ ] **2.32** D_BOM (index 21)
+- [x] **2.32** D_BOM (index 21)
 
 **Test: `test_d_bom_destroys_daemon_and_damages_surrounding`**
 - **Preconditions**:
@@ -913,7 +915,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires daemon enemy to exist
 - D_BOM does splash damage AND STUNS enemies in 8 surrounding cells of the daemon
 
-- [ ] **2.33** DELAY (index 22)
+- [x] **2.33** DELAY (index 22)
 
 **Test: `test_delay_extends_transmissions`**
 - **Preconditions**:
@@ -933,7 +935,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Transmission `turnsRemaining`: 2 → 5 (+3)
 - **Applicability**: Requires transmissions to exist
 
-- [ ] **2.34** ANTI-V (index 23)
+- [x] **2.34** ANTI-V (index 23)
 
 **Test: `test_antiv_damages_and_stuns_all_viruses`**
 - **Preconditions**:
@@ -960,7 +962,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires virus enemy to exist
 - ANTI-V also STUNS all surviving viruses
 
-- [ ] **2.35** SCORE (index 24)
+- [x] **2.35** SCORE (index 24)
 
 **Test: `test_score_gains_points_by_stages_left`**
 - **Preconditions**:
@@ -980,7 +982,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected Reward**: Score gain: 6 × 0.5 = 3.0
 - **Applicability**: Requires not being on last stage (stage < 8)
 
-- [ ] **2.36** REDUC (index 25)
+- [x] **2.36** REDUC (index 25)
 
 **Test: `test_reduc_reduces_block_spawn_counts`**
 - **Preconditions**:
@@ -1006,7 +1008,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Block at (2,2) unchanged (siphoned blocks not affected)
 - **Applicability**: Requires unsiphoned blocks with spawnCount > 0
 
-- [ ] **2.37** ATK+ (index 26)
+- [x] **2.37** ATK+ (index 26)
 
 **Test: `test_atkplus_increases_damage`**
 - **Preconditions**:
@@ -1026,7 +1028,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Applicability**: Requires not used this stage AND attackDamage < 2
 - **Subsequent attacks**: Should deal 2 damage instead of 1
 
-- [ ] **2.38** HACK (index 27)
+- [x] **2.38** HACK (index 27)
 
 **Test: `test_hack_damages_enemies`**
 - **Preconditions**:
@@ -1059,9 +1061,9 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected Reward**: 0.3 (1 kill)
 - **Applicability**: Requires siphoned cells to exist
 
-#### Enemy Tests (`test_enemies.py`)
+#### Enemy Tests (`test_enemies.py`) - IMPLEMENTED
 
-- [ ] **2.39** Enemy spawns from transmission
+- [x] **2.39** Enemy spawns from transmission
 
 **Test: `test_enemy_spawns_from_transmission`**
 - **Preconditions**:
@@ -1081,7 +1083,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - New virus enemy at (5,5)
   - `turn`: 0 → 1
 
-- [ ] **2.40** Enemy movement toward player
+- [x] **2.40** Enemy movement toward player
 
 **Test: `test_enemy_moves_toward_player`**
 - **Preconditions**:
@@ -1099,7 +1101,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Enemy moves from (3,0) to (2,0) (1 cell closer, daemon speed = 1)
   - `turn`: 0 → 1
 
-- [ ] **2.41** Virus double-move
+- [x] **2.41** Virus double-move
 
 **Test: `test_virus_moves_twice`**
 - **Preconditions**:
@@ -1116,7 +1118,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected Observation Changes**:
   - Virus moves from (4,0) to (2,0) (2 cells, moveSpeed=2)
 
-- [ ] **2.42** Glitch can move on blocks
+- [x] **2.42** Glitch can move on blocks
 
 **Test: `test_glitch_moves_on_blocks`**
 - **Preconditions**:
@@ -1135,7 +1137,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Glitch moves through/onto block (only enemy type that can)
   - Position: (3,0) → (2,0)
 
-- [ ] **2.43** Cryptog visibility
+- [x] **2.43** Cryptog visibility
 
 **Test: `test_cryptog_visible_in_same_row`**
 - **Preconditions**:
@@ -1155,7 +1157,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Preconditions**: Cryptog at (5,5), player at (3,0)
 - **Expected**: Cryptog NOT visible in observation (different row and col, showActivated=false)
 
-- [ ] **2.44** Enemy attack when adjacent
+- [x] **2.44** Enemy attack when adjacent
 
 **Test: `test_enemy_attacks_adjacent_player`**
 - **Preconditions**:
@@ -1173,7 +1175,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - `player.hp`: 3 → 2 (took 1 damage)
 - **Expected Reward**: Damage penalty: -1.0
 
-- [ ] **2.45** Stunned enemy doesn't move
+- [x] **2.45** Stunned enemy doesn't move
 
 **Test: `test_stunned_enemy_no_movement`**
 - **Preconditions**:
@@ -1191,7 +1193,7 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Enemy position unchanged (3,0)
   - Enemy `stunned` may reset to False after turn
 
-- [ ] **2.46** Non-stunned enemies move after turn-ending actions
+- [x] **2.46** Non-stunned enemies move after turn-ending actions
 
 **Test: `test_enemies_move_after_turn_end`**
 - **Preconditions**:
@@ -1213,16 +1215,16 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
   - Daemon position unchanged (stunned)
 - **Key**: Any turn-ending action causes non-stunned enemies to move
 
-#### Turn Tests (`test_turns.py`)
+#### Turn Tests (`test_turns.py`) - IMPLEMENTED
 
-- [ ] **2.47** Move/attack/siphon ends player turn
+- [x] **2.47** Move/attack/siphon ends player turn
 
 **Test: `test_move_ends_turn`**
 - **Preconditions**: Player at (3,3), turn=0
 - **Action**: 0 (move up)
 - **Expected**: `turn`: 0 → 1
 
-- [ ] **2.48** Program execution does NOT end turn
+- [x] **2.48** Program execution does NOT end turn
 
 **Test: `test_program_does_not_end_turn`**
 - **Preconditions**: Player with push program, energy=2, turn=0, enemy present
@@ -1230,28 +1232,28 @@ Based on analysis of `specs/env-parity-tests.md`, `everything_wrong_with_impl_pl
 - **Expected**: `turn`: 0 (unchanged)
 - **Post-step Valid Actions**: Should include all 4 movement directions
 
-- [ ] **2.49** Wait program ends turn
+- [x] **2.49** Wait program ends turn
 
 **Test: `test_wait_ends_turn`**
 - **Preconditions**: Player with wait program, energy=1, turn=0
 - **Action**: 10 (wait)
 - **Expected**: `turn`: 0 → 1
 
-- [ ] **2.50** Turn counter increments on turn end
+- [x] **2.50** Turn counter increments on turn end
 
 **Test: `test_turn_counter_increments`**
 - **Preconditions**: turn=5
 - **Action**: 0 (move up)
 - **Expected**: `turn`: 5 → 6
 
-- [ ] **2.51** Enemy turn executes after player turn ends
+- [x] **2.51** Enemy turn executes after player turn ends
 
 **Test: `test_enemy_turn_after_player`**
 - **Preconditions**: Enemy at (5,0), player at (0,0), turn=0
 - **Action**: 0 (move up)
 - **Expected**: Enemy closer to player after step completes
 
-- [ ] **2.52** Chain multiple programs before turn ends
+- [x] **2.52** Chain multiple programs before turn ends
 
 **Test: `test_chain_programs`**
 - **Preconditions**: Player with push (5) and pull (6), energy=4, turn=0, enemies present
