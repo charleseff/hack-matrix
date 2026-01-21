@@ -26,27 +26,26 @@ Based on Swift codebase exploration, the following state is NOT in observations:
 | `scheduledTaskInterval` | GameState | Decreases with each siphon (min 4), persists through stages. Controls spawn pressure. |
 | `nextScheduledTaskTurn` | GameState | Determines when transmissions spawn. Pure internal state. |
 | Question block contents | Cell | Hidden until siphoned. Affects strategy and rewards. |
-| `spawnedFromSiphon` flag | Enemy | Siphon-spawned enemies adjacent to player cause extra damage. |
-| `isFromScheduledTask` flag | Enemy | Affects kill reward calculation. |
+| `spawnedFromSiphon` flag | Enemy | **Significant negative reward** if player dies from a siphon-spawned enemy. Will be in obs space after prerequisite spec. |
+| `isFromScheduledTask` flag | Enemy | Enemies with this flag give **no reward** when killed. NOT in obs space (internal only). |
 | `lastKnownRow/Col` | Enemy (Cryptog) | Hidden position hints for invisible enemies. |
 
 ### Medium Priority (Economy Impact)
 
 | Hidden State | Location | Impact |
 |--------------|----------|--------|
-| `disabledTurns` | Enemy | Enemies disabled on spawn turn. |
-| `isStunned` | Enemy | Persists exactly one turn, then resets. |
+| `disabledTurns` | Enemy | Counter that decrements each turn. Enemies spawn with `disabledTurns=1`. Enemies with `disabledTurns > 0` don't act. |
+| `isStunned` | Enemy | Boolean flag set when enemy takes damage but survives. Auto-resets to `false` at start of enemy turn (one-turn effect). |
 | `pendingSiphonTransmissions` | GameState | Defers siphon-spawned enemy creation. |
-| `atkPlusUsedThisStage` | GameState | Prevents duplicate ATK+ usage per stage. |
 | Block placement validation | Stage gen | Can fail silently after 100 attempts. |
 
 ### Lower Priority (Edge Cases)
 
 | Hidden State | Location | Impact |
 |--------------|----------|--------|
-| `siphonCenter` | Cell | Vestigial? Purpose unclear. |
 | `gameHistory` | GameState | Undo program restore fidelity. |
-| Lifetime stats | GameState | totalSiphons, totalKills, etc. May affect nothing. |
+
+**Note:** `siphonCenter`, `spawnedFromSiphon` (enemy obs), and `atkPlusUsesThisStage` are addressed in [observation-and-attack-fixes.md](./observation-and-attack-fixes.md).
 
 ## Implementation Plan
 
@@ -109,11 +108,9 @@ These test **observable effects** of scheduled tasks, not internal state.
 
 ### Phase 3: Implementation-Level Tests
 
-Create tests that verify hidden state behavior. These require **extending the interface** or **direct implementation access**.
+Create tests that verify hidden state behavior by extending the interface.
 
-#### Option A: Extend Interface (Preferred for JAX parity)
-
-Add `get_internal_state()` to `EnvInterface`:
+**Decision:** Add `get_internal_state()` to `EnvInterface`. Even though it's only used for tests, this preserves parity - JAX must implement the same internal mechanics.
 
 ```python
 class EnvInterface(Protocol):
@@ -130,40 +127,30 @@ class InternalState:
     pending_siphon_transmissions: int
     enemies: list[EnemyInternalState]
     # ... etc
+
+@dataclass
+class EnemyInternalState:
+    row: int
+    col: int
+    hp: int
+    disabled_turns: int
+    is_stunned: bool
+    spawned_from_siphon: bool
+    is_from_scheduled_task: bool
 ```
-
-Pros: JAX must implement same internal state, ensuring parity
-Cons: Pollutes interface with test-only methods
-
-#### Option B: Swift-Only Unit Tests
-
-Test Swift internals directly without going through the wrapper:
-
-```python
-# tests/implementation/test_swift_internals.py
-def test_siphon_reduces_scheduled_interval(swift_env):
-    """Each siphon permanently reduces scheduledTaskInterval by 1."""
-    # Would need Swift to expose this via debug protocol
-    pass
-```
-
-Cons: Doesn't help JAX parity, requires Swift protocol changes anyway
-
-#### Recommendation
-
-Use **Option A** for critical hidden state that affects gameplay determinism. The interface extension is justified because JAX *must* implement the same internal mechanics.
-
-For truly internal details (like `siphonCenter`), document them but don't test - they're implementation details that don't affect game outcomes.
 
 ### Phase 4: Specific Implementation-Level Tests
 
 #### Scheduled Task Mechanics (`test_scheduled_tasks.py`)
+
+**Note:** Many scheduled task mechanics can be tested via observation space by moving multiple times on an empty board (no enemies to kill player). Use `get_internal_state()` for verifying exact internal values.
 
 ```python
 def test_initial_interval_depends_on_stage(env):
     """scheduledTaskInterval = 13 - stage at stage start."""
     # Stage 1: interval = 12
     # Stage 5: interval = 8
+    # Verify via get_internal_state()
     pass
 
 def test_siphon_permanently_reduces_interval(env):
@@ -182,27 +169,43 @@ def test_interval_reduction_persists_through_stages(env):
 def test_siphon_adds_temporary_delay(env):
     """Siphoning adds +5 turns to nextScheduledTaskTurn."""
     pass
+
+def test_transmission_spawns_observable_via_moves(env):
+    """Verify transmissions appear in observation after enough moves."""
+    # Set up empty board (no enemies)
+    # Move repeatedly until transmission appears in grid observation
+    # This tests observable effects without get_internal_state()
+    pass
 ```
 
 #### Enemy Spawn Source (`test_hidden_state.py`)
 
 ```python
-def test_siphon_spawned_enemy_flag(env):
-    """Enemies from siphoning have spawnedFromSiphon = true."""
+def test_siphon_spawned_enemy_flag_in_observation(env):
+    """Enemies from siphoning have spawnedFromSiphon visible in obs."""
+    # After prerequisite spec, spawnedFromSiphon is in enemy observation
+    # Siphon a block, verify spawned enemy has flag set in observation
     pass
 
 def test_scheduled_spawned_enemy_flag(env):
     """Enemies from scheduled tasks have isFromScheduledTask = true."""
+    # Via get_internal_state()
     pass
 
-def test_siphon_spawned_adjacent_causes_extra_damage(env):
-    """Adjacent siphon-spawned enemy deals +1 damage."""
-    # This IS observable via HP change
+def test_death_from_siphon_enemy_gives_large_negative_reward(env):
+    """Dying to siphon-spawned enemy gives significant negative reward."""
+    # Set up via set_state:
+    # - Player with 1 HP
+    # - spawnedFromSiphon enemy adjacent to player
+    # - Another enemy adjacent for player to attack
+    # Player attacks the other enemy, causing siphon enemy to attack and kill player
+    # Verify large negative reward
     pass
 
 def test_scheduled_enemy_kill_gives_no_reward(env):
     """Killing scheduled-task enemies gives 0 reward."""
-    # This IS observable via reward
+    # Set up via set_state with isFromScheduledTask=true enemy
+    # Kill it, verify 0 reward
     pass
 ```
 
@@ -218,8 +221,10 @@ def test_exit_position_is_corner(env):
     """Exit is always in a corner (not player's starting corner)."""
     pass
 
-def test_data_siphons_placed_in_remaining_corners(env):
-    """2 data siphons placed in corners without exit/player."""
+def test_data_siphons_in_other_two_corners(env):
+    """2 data siphons placed in the 2 corners without exit/player."""
+    # Player starts in one corner, exit in another
+    # Data siphons must be in the remaining 2 corners
     pass
 
 def test_question_block_contents_consistent(env):
@@ -277,17 +282,19 @@ markers = [
 6. [ ] Decision made on interface extension for implementation-level tests
 7. [ ] Implementation-level tests added for high-priority hidden state
 
-## Open Questions
+## Resolved Questions
 
-1. **Interface extension**: Should `get_internal_state()` be added to `EnvInterface`, or should implementation tests be Swift-only?
-2. **Question block determinism**: Should we add seeding to make question block contents deterministic for testing?
-3. **Lifetime stats**: Are these used anywhere? If not, can they be removed from Swift?
+1. **Interface extension**: ✅ Yes, `get_internal_state()` will be added to `EnvInterface` to preserve parity in tests.
+2. **Question block determinism**: Not needed - can test consistency via undo/redo without seeding.
+3. **Lifetime stats**: Don't exist in codebase - removed from spec.
 
 ## Dependencies
 
-- None (this spec should be completed before `jax-implementation.md`)
+- [observation-and-attack-fixes.md](./observation-and-attack-fixes.md) - Must be completed first (adds `siphonCenter` to obs, ATK+ twice per stage, `set_state` enemy flags)
+- This spec should be completed before `jax-implementation.md`
 
 ## References
 
+- [observation-and-attack-fixes.md](./observation-and-attack-fixes.md) - Prerequisite fixes
 - [env-parity-tests.md](./env-parity-tests.md) - Original parity test spec
 - [game-mechanics.md](./game-mechanics.md) - Authoritative game mechanics
