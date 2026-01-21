@@ -72,32 +72,36 @@ class TestScheduledTransmissionSpawns:
         """After enough turns pass, scheduled tasks spawn transmissions/enemies.
 
         In stage 1, scheduledTaskInterval = 12. First spawn at turn 12.
-        The transmission becomes an enemy after 1 turn, so by turn 15
-        we should see enemies from the scheduled spawns.
+        The transmission becomes an enemy after 1 turn.
+
+        Note: We use get_internal_state() to check enemies because cryptogs
+        (25% of spawns) are invisible in observations when outside player's
+        row/column, and scheduled spawns always spawn outside line of fire.
         """
         # Set up: empty board with player, WAIT program owned
         state = GameState(
             player=PlayerState(row=0, col=0, hp=3, credits=0, energy=50),
             owned_programs=[PROGRAM_WAIT],  # Need WAIT to advance turns
         )
-        obs = swift_env.set_state(state)
+        swift_env.set_state(state)
 
-        initial_entities = count_spawned_entities(obs)
+        internal_before = swift_env.get_internal_state()
+        initial_enemies = len(internal_before.enemies)
 
         # Execute WAIT 15 times to reach turn 15 (past first scheduled spawn at turn 12)
         for _ in range(15):
             result = swift_env.step(PROGRAM_WAIT)
-            obs = result.observation
             if result.done:
                 break
 
-        final_entities = count_spawned_entities(obs)
+        internal_after = swift_env.get_internal_state()
+        final_enemies = len(internal_after.enemies)
 
-        # After ~15 turns, we should have at least one scheduled entity
+        # After ~15 turns, we should have at least one scheduled enemy
         # (transmission that spawned at turn 12 becomes enemy at turn 13)
-        assert final_entities > initial_entities, (
-            f"Expected entities (transmissions/enemies) to appear after scheduled interval. "
-            f"Initial: {initial_entities}, Final: {final_entities}"
+        assert final_enemies > initial_enemies, (
+            f"Expected enemies to appear after scheduled interval. "
+            f"Initial: {initial_enemies}, Final: {final_enemies}"
         )
 
     @pytest.mark.requires_set_state
