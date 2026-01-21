@@ -1,5 +1,7 @@
 # Observation and Attack Fixes Spec
 
+**Status:** Complete
+
 ## Goal
 
 Fix three issues before proceeding with test reorganization:
