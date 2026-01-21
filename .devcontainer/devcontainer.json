@@ -9,9 +9,13 @@
 			"configureZshAsDefaultShell": true
 		},
 		"ghcr.io/devcontainers/features/github-cli:1": {},
-		"ghcr.io/stu-bell/devcontainer-features/claude-code:0": {}
+		"ghcr.io/stu-bell/devcontainer-features/claude-code:0": {},
+		"ghcr.io/devcontainers/features/git:1": {}
 	},
-	"runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+	"runArgs": [
+		"--cap-add=NET_ADMIN",
+		"--cap-add=NET_RAW"
+	],
 	"mounts": [
 		// VS Code's copyGitConfig feature should copy .gitconfig automatically, but it doesn't work reliably.
 		// Mount it explicitly to ensure git user.name/email are available in the container.
