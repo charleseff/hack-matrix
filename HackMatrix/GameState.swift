@@ -1136,8 +1136,16 @@ class GameState {
             affectedPositions = execResult.affectedPositions
             enemiesKilled += execResult.enemiesKilled
             transmissionsKilled += execResult.transmissionsKilled
-            // Only wait program advances enemy turn
-            shouldRunEnemyTurn = programType == .wait && success
+
+            // WARP to exit triggers stage completion
+            if programType == .warp && success {
+                if player.row == exitPosition.row && player.col == exitPosition.col {
+                    exitReached = true
+                }
+            }
+
+            // Only wait program advances enemy turn (unless exit was reached)
+            shouldRunEnemyTurn = programType == .wait && success && !exitReached
         }
 
         if !success {

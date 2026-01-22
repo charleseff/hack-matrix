@@ -170,10 +170,17 @@ The implementation builds from simple to complex, with each milestone verified b
 **Goal**: Completing stages works correctly.
 
 **Components**:
-- Exit detection at (5,5)
-- Stage generation
-- Player stat preservation
-- Stage-specific parameters
+- Exit detection (dynamic position, random corner different from player)
+- Stage completion triggers: movement to exit OR WARP to exit
+- Player position preserved (stays at exit after transition)
+- HP gains +1 (up to max 3)
+- Player resources preserved (credits, energy, score)
+- Full stage generation:
+  - New exit at random corner
+  - Data siphons at remaining corners
+  - 5-11 blocks placed randomly
+  - Resources on empty cells
+  - Transmissions based on stage number
 
 **Verification**: `test_stages.py` passes
 
@@ -205,7 +212,7 @@ The implementation builds from simple to complex, with each milestone verified b
 **Goal**: Complex programs work (WARP, POLY, CRASH, UNDO, STEP, SCORE, REDUC, DELAY, ATK+).
 
 **Components**:
-- Random target selection (WARP)
+- Random target selection (WARP) - triggers stage completion if target at exit
 - Type transformation (POLY)
 - State history (UNDO)
 - Stage-scoped effects (ATK+)

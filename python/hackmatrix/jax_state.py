@@ -211,6 +211,10 @@ class EnvState:
     step_active: jnp.bool_              # STEP program effect active
     atk_plus_uses_this_stage: jnp.int32 # 0, 1, or 2 (max 2 uses per stage)
 
+    # Exit position (random corner, different from player)
+    exit_row: jnp.int32
+    exit_col: jnp.int32
+
     # Scheduled task timing
     next_scheduled_task_turn: jnp.int32
     scheduled_task_interval: jnp.int32
@@ -312,6 +316,8 @@ def create_empty_state(rng_key: jax.Array) -> EnvState:
         scheduled_tasks_disabled=jnp.bool_(False),
         step_active=jnp.bool_(False),
         atk_plus_uses_this_stage=jnp.int32(0),
+        exit_row=jnp.int32(EXIT_ROW),
+        exit_col=jnp.int32(EXIT_COL),
         next_scheduled_task_turn=jnp.int32(DEFAULT_SCHEDULED_TASK_INTERVAL),
         scheduled_task_interval=jnp.int32(DEFAULT_SCHEDULED_TASK_INTERVAL),
         pending_siphon_transmissions=jnp.int32(0),

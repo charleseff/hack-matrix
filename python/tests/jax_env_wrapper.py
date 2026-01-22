@@ -211,9 +211,10 @@ class JaxEnvWrapper:
                 prog_idx = action_idx - 5
                 owned_programs = owned_programs.at[prog_idx].set(True)
 
-        # Exit at (5, 5)
+        # Exit at (5, 5) by default for tests
+        exit_row, exit_col = 5, 5
         grid_exit = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_)
-        grid_exit = grid_exit.at[5, 5].set(True)
+        grid_exit = grid_exit.at[exit_row, exit_col].set(True)
 
         # Build complete state
         self.state = jax_state.replace(
@@ -239,6 +240,8 @@ class JaxEnvWrapper:
             scheduled_tasks_disabled=jnp.bool_(state.scheduledTasksDisabled),
             step_active=jnp.bool_(False),
             atk_plus_uses_this_stage=jnp.int32(0),
+            exit_row=jnp.int32(exit_row),
+            exit_col=jnp.int32(exit_col),
             next_scheduled_task_turn=jnp.int32(DEFAULT_SCHEDULED_TASK_INTERVAL),
             scheduled_task_interval=jnp.int32(DEFAULT_SCHEDULED_TASK_INTERVAL),
             pending_siphon_transmissions=jnp.int32(0),

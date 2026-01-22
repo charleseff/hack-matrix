@@ -407,6 +407,36 @@ class TestWarpProgram:
         valid = env.get_valid_actions()
         assert PROGRAM_WARP not in valid, f"WARP requires targets, got {valid}"
 
+    @pytest.mark.requires_set_state
+    def test_warp_to_exit_triggers_stage_advance(self, env):
+        """WARP to an enemy at exit should trigger stage advance.
+
+        If player warps to an enemy that is standing on the exit cell,
+        the stage should advance (same as if player walked to exit).
+        """
+        # Player at (0,0), enemy at exit (5,5)
+        state = GameState(
+            player=PlayerState(row=0, col=0, hp=3, credits=2, energy=2),
+            enemies=[Enemy(type="virus", row=5, col=5, hp=2, stunned=False)],
+            owned_programs=[PROGRAM_WARP],
+            stage=1
+        )
+        obs_before = env.set_state(state)
+
+        # Get stage before (encoding: (stage-1)/7, decoding: round(x*7)+1)
+        stage_before = int(round(obs_before.player[5] * 7)) + 1
+
+        result = env.step(PROGRAM_WARP)
+
+        # Player should warp to (5,5) and stage should advance
+        row = int(round(result.observation.player[0] * 5))
+        col = int(round(result.observation.player[1] * 5))
+        stage_after = int(round(result.observation.player[5] * 7)) + 1
+
+        assert (row, col) == (5, 5), f"Player should warp to (5,5), got ({row}, {col})"
+        assert stage_after == stage_before + 1, \
+            f"Stage should advance from {stage_before} to {stage_before + 1} when warping to exit, got {stage_after}"
+
 
 # MARK: - Test 2.22: DEBUG Program
 

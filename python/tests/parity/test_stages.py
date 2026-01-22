@@ -35,8 +35,12 @@ def get_player_position(obs: Observation) -> tuple[int, int]:
 
 
 def get_player_stage(obs: Observation) -> int:
-    """Extract player stage from observation."""
-    return int(round(obs.player[5] * 8))
+    """Extract player stage from observation.
+
+    Stage encoding: (stage-1)/7, where stage is 1-8.
+    Decoding: round(normalized * 7) + 1
+    """
+    return int(round(obs.player[5] * 7)) + 1
 
 
 def get_player_score(obs: Observation) -> int:
@@ -243,24 +247,193 @@ class TestPlayerStatePreserved:
         assert hp_after == 3, f"HP should be restored to 3 on stage transition, got {hp_after}"
 
     @pytest.mark.requires_set_state
-    def test_player_position_on_stage_transition(self, env):
-        """Player position changes on stage transition.
+    def test_player_position_preserved_on_stage_transition(self, env):
+        """Player position should be preserved on stage transition.
 
-        Note: The exact starting position depends on game implementation.
-        We verify the stage transition occurred successfully.
+        When player reaches exit, they stay at the exit position after
+        the stage advances. The exit position becomes their starting
+        position for the new stage.
         """
+        # Player starts adjacent to exit at (5,5)
         state = GameState(
             player=PlayerState(row=5, col=4, hp=3),
             enemies=[],
             blocks=[],
             stage=1
         )
-        obs_before = env.set_state(state)
-        stage_before = get_player_stage(obs_before)
+        env.set_state(state)
+
+        # Move right to reach exit at (5, 5)
+        result = env.step(ACTION_MOVE_RIGHT)
+
+        # Player should still be at (5, 5) after stage transition
+        row, col = get_player_position(result.observation)
+        assert (row, col) == (5, 5), \
+            f"Player should stay at exit position (5, 5) after stage transition, got ({row}, {col})"
+
+    @pytest.mark.requires_set_state
+    def test_hp_gains_one_on_stage_transition(self, env):
+        """Player gains 1 HP (up to max) on stage transition, not reset to max.
+
+        Starting at HP=1, player should have HP=2 after stage transition.
+        This distinguishes "gains 1 HP" from "restored to max".
+        """
+        state = GameState(
+            player=PlayerState(row=5, col=4, hp=1, credits=0, energy=0),
+            enemies=[],
+            blocks=[],
+            stage=1
+        )
+        env.set_state(state)
 
         result = env.step(ACTION_MOVE_RIGHT)
 
-        stage_after = get_player_stage(result.observation)
-        # Verify stage transition occurred
-        assert stage_after > stage_before, \
-            f"Stage should advance from {stage_before}, got {stage_after}"
+        hp_after = get_player_hp(result.observation)
+        # HP should gain 1, not reset to max
+        assert hp_after == 2, \
+            f"HP should gain 1 (1->2) on stage transition, got {hp_after}"
+
+
+# MARK: - Test: Exit Position Changes on Stage Transition
+
+class TestExitPositionOnStageTransition:
+    """Test that exit position changes to a different corner on stage transition."""
+
+    @pytest.mark.requires_set_state
+    def test_exit_at_different_corner_after_stage_complete(self, env):
+        """Exit should move to a different corner after stage completion.
+
+        After completing a stage, the exit should be at one of the other
+        three corners (not where the player is standing).
+        """
+        # Player at (5,4), will move to exit at (5,5)
+        state = GameState(
+            player=PlayerState(row=5, col=4, hp=3),
+            enemies=[],
+            blocks=[],
+            stage=1
+        )
+        env.set_state(state)
+
+        # Move to exit
+        result = env.step(ACTION_MOVE_RIGHT)
+
+        # Player should be at (5,5) after stage transition
+        row, col = get_player_position(result.observation)
+        assert (row, col) == (5, 5), f"Player should be at (5,5), got ({row}, {col})"
+
+        # Find exit position from grid observation
+        # Exit is at grid feature index 40
+        exit_positions = []
+        for r in range(6):
+            for c in range(6):
+                if result.observation.grid[r, c, 40] > 0.5:
+                    exit_positions.append((r, c))
+
+        # Should be exactly one exit
+        assert len(exit_positions) == 1, \
+            f"Should have exactly one exit, found {len(exit_positions)} at {exit_positions}"
+
+        new_exit = exit_positions[0]
+
+        # Exit should be at a corner (one of: (0,0), (0,5), (5,0), (5,5))
+        corners = [(0, 0), (0, 5), (5, 0), (5, 5)]
+        assert new_exit in corners, \
+            f"Exit should be at a corner, found {new_exit}"
+
+        # Exit should NOT be at player's position (5,5)
+        assert new_exit != (5, 5), \
+            f"Exit should have moved to a different corner, but it's still at {new_exit}"
+
+
+# MARK: - Test: Stage Generation Content
+
+class TestStageGenerationContent:
+    """Test that new stages generate proper content."""
+
+    @pytest.mark.requires_set_state
+    def test_new_stage_has_blocks(self, env):
+        """New stage should have blocks generated."""
+        state = GameState(
+            player=PlayerState(row=5, col=4, hp=3),
+            enemies=[],
+            blocks=[],
+            stage=1
+        )
+        env.set_state(state)
+
+        # Complete stage 1
+        result = env.step(ACTION_MOVE_RIGHT)
+
+        # Count blocks in new stage observation
+        # Block channels: 7 (data), 8 (program), 9 (question)
+        block_count = 0
+        for r in range(6):
+            for c in range(6):
+                has_data = result.observation.grid[r, c, 7] > 0.5
+                has_program = result.observation.grid[r, c, 8] > 0.5
+                has_question = result.observation.grid[r, c, 9] > 0.5
+                if has_data or has_program or has_question:
+                    block_count += 1
+
+        # Should have 5-11 blocks
+        assert 5 <= block_count <= 11, \
+            f"New stage should have 5-11 blocks, found {block_count}"
+
+    @pytest.mark.requires_set_state
+    def test_new_stage_has_data_siphons_at_corners(self, env):
+        """New stage should have data siphons at non-exit, non-player corners."""
+        state = GameState(
+            player=PlayerState(row=5, col=4, hp=3),
+            enemies=[],
+            blocks=[],
+            stage=1
+        )
+        env.set_state(state)
+
+        # Complete stage 1
+        result = env.step(ACTION_MOVE_RIGHT)
+
+        # Find data siphon positions
+        # Data siphon is at grid feature index 39
+        siphon_positions = []
+        for r in range(6):
+            for c in range(6):
+                if result.observation.grid[r, c, 39] > 0.5:
+                    siphon_positions.append((r, c))
+
+        # Should have exactly 2 data siphons (4 corners - player - exit = 2)
+        assert len(siphon_positions) == 2, \
+            f"Should have 2 data siphons, found {len(siphon_positions)} at {siphon_positions}"
+
+        # All siphons should be at corners
+        corners = [(0, 0), (0, 5), (5, 0), (5, 5)]
+        for pos in siphon_positions:
+            assert pos in corners, \
+                f"Data siphon at {pos} should be at a corner"
+
+    @pytest.mark.requires_set_state
+    def test_new_stage_has_transmissions(self, env):
+        """New stage should spawn transmissions based on stage number."""
+        state = GameState(
+            player=PlayerState(row=5, col=4, hp=3),
+            enemies=[],
+            blocks=[],
+            stage=1
+        )
+        env.set_state(state)
+
+        # Complete stage 1 -> stage 2
+        result = env.step(ACTION_MOVE_RIGHT)
+
+        # Count transmissions in observation
+        # Transmission turns remaining is at channel 36
+        transmission_count = 0
+        for r in range(6):
+            for c in range(6):
+                if result.observation.grid[r, c, 36] > 0:
+                    transmission_count += 1
+
+        # Stage 2 should spawn 2 transmissions
+        assert transmission_count == 2, \
+            f"Stage 2 should spawn 2 transmissions, found {transmission_count}"

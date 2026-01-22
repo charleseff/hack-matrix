@@ -6,7 +6,8 @@ This document provides an authoritative reference for HackMatrix game mechanics,
 
 - **Grid Size**: 6×6 cells (Constants.gridSize = 6)
 - **Valid Positions**: row 0-5, col 0-5
-- **Exit Position**: (5, 5) - top-right corner
+- **Corners**: (0,0), (0,5), (5,0), (5,5)
+- **Exit Position**: Random corner, different from player's corner (changes each stage)
 
 ### Direction Mapping
 
@@ -177,6 +178,7 @@ When taking a directional action (0-3):
 #### WARP (8)
 - Teleports player TO a random enemy or transmission position
 - **Kills the target** (enemy or destroys transmission)
+- **Triggers stage completion** if target is at exit position
 - Does NOT end turn
 
 #### POLY (9)
@@ -338,12 +340,21 @@ An action is valid (not masked) if:
 
 ## Stage Transitions
 
-### Stage Completion
-- Player moves to exit position (5, 5)
-- Current stage increments
-- New stage is generated
-- Player stats (credits, energy, score) are preserved
-- Player position resets
+### Stage Completion Triggers
+- Player **moves** to exit position, OR
+- Player uses **WARP** to teleport to an enemy/transmission at exit position
+
+### Stage Completion Effects
+1. Current stage increments
+2. **Player position preserved** (stays at exit position)
+3. **HP gains +1** (up to max 3, NOT reset to max)
+4. Player stats (credits, energy, score) preserved
+5. New stage is generated with:
+   - New exit at random corner (different from player's position)
+   - Data siphons at remaining 2 corners
+   - 5-11 blocks placed randomly
+   - Resources on empty cells
+   - Transmissions spawned based on stage number
 
 ### Victory Condition
 - Complete stage 8
@@ -356,15 +367,61 @@ After stage generation, all data blocks must satisfy:
 block.points == block.spawnCount
 ```
 
+## Stage Generation
+
+When a new stage begins, the following content is generated:
+
+### Corner Placement
+- **Player**: Stays at current position (the old exit)
+- **Exit**: Random corner different from player
+- **Data Siphons**: Placed at remaining 2 corners
+
+### Block Placement
+- **Count**: 5-11 blocks randomly
+- **Positions**: Non-corner cells only, avoiding enemies/transmissions
+- **Types**: 50% data blocks, 50% program blocks
+- **Data blocks**: Points 1-9 (random), spawnCount == points
+- **Program blocks**: Random program type, spawnCount = 2
+
+### Resource Placement
+- Placed on empty cells (not blocks, not corners)
+- **Amount distribution**: 45% → 1, 45% → 2, 10% → 3
+- **Type**: 50% credits, 50% energy
+
+### Transmission Spawning
+| Stage | Transmissions |
+|-------|---------------|
+| 1 | 1 |
+| 2 | 2 |
+| 3 | 3 |
+| 4 | 4 |
+| 5 | 5 |
+| 6 | 6 |
+| 7 | 7 |
+| 8 | 8 |
+
+- Spawned at empty cells, preferring positions out of player's line of fire
+- Enemy type: 25% each (virus, daemon, glitch, cryptog)
+- Turns remaining: 1 (spawns as enemy next turn)
+
 ## Non-Deterministic Elements
 
 ### Random Elements
-- Enemy type selection for POLY
-- Target selection for WARP (random from enemies/transmissions)
-- Stage generation (block placement, enemy types)
-- Transmission spawning positions
+- **Exit position**: Random corner different from player (on stage transition)
+- **Enemy type selection** for POLY
+- **Target selection** for WARP (random from enemies/transmissions)
+- **Block placement**: Count (5-11), positions, types (data/program)
+- **Block contents**: Data points (1-9), program types
+- **Resource placement**: Amount (1-3), type (credits/energy)
+- **Transmission spawning**: Positions, enemy types
 
 ### Handling in Tests
 - Use deterministic assertions (verify one of valid outcomes)
 - For WARP with multiple targets: verify player is at ONE of the target positions
-- For stage generation: only test deterministic properties (player preserved, invariants hold)
+- For stage generation: test deterministic properties:
+  - Player position preserved
+  - HP gains +1 (up to max)
+  - Exit at a corner different from player
+  - Data siphons at 2 corners
+  - Block count between 5-11
+  - Transmission count matches stage number
