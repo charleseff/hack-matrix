@@ -25,15 +25,12 @@ from .env_interface import (
 )
 
 # Import the JAX environment modules
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from hackmatrix import jax_env
-from hackmatrix.jax_env import get_observation
-from hackmatrix.jax_state import (
+from hackmatrix.jax_env import (
     EnvState,
     Player,
     create_empty_state,
+    get_observation,
     MAX_ENEMIES,
     MAX_TRANSMISSIONS,
     NUM_PROGRAMS,
@@ -44,9 +41,9 @@ from hackmatrix.jax_state import (
     BLOCK_PROGRAM,
     BLOCK_QUESTION,
     PLAYER_MAX_HP,
-    DEFAULT_SCHEDULED_TASK_INTERVAL,
 )
-from hackmatrix.jax_observation import Observation as JaxObservation
+from hackmatrix.jax_env.state import DEFAULT_SCHEDULED_TASK_INTERVAL
+from hackmatrix.jax_env.observation import Observation as JaxObservation
 
 
 class JaxEnvWrapper:

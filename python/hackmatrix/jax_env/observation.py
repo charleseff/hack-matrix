@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 from flax import struct
 
-from .jax_state import (
+from .state import (
     EnvState,
     GRID_SIZE,
     GRID_FEATURES,
