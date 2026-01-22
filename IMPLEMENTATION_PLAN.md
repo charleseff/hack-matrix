@@ -4,6 +4,8 @@
 
 **Success Criteria**: All parity tests pass with `pytest tests/parity/ -k jax -v`
 
+**Current Status**: 82 tests passing, 66 tests failing
+
 ## Current State Assessment
 
 ### What Exists
@@ -14,11 +16,11 @@
 - **Observation encoding**: 42-feature grid documented in `observation_utils.py`
 
 ### What's Missing
-- [ ] Full JAX `EnvState` dataclass with all game state fields
+- [x] Full JAX `EnvState` dataclass with all game state fields
 - [ ] Game logic (movement, combat, siphon, programs, enemy AI)
-- [ ] Observation building from JAX state
-- [ ] `set_state()` for test compatibility
-- [ ] `get_internal_state()` for implementation tests
+- [x] Observation building from JAX state
+- [x] `set_state()` for test compatibility
+- [x] `get_internal_state()` for implementation tests
 
 ## JAX Code Structure
 
@@ -26,14 +28,14 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `jax_env.py` | Main environment - reset, step, get_valid_actions | [ ] |
-| `jax_state.py` | EnvState dataclass and constants | [ ] |
-| `jax_observation.py` | Observation building from state | [ ] |
-| `jax_actions.py` | Action execution (movement, siphon, programs) | [ ] |
-| `jax_enemy.py` | Enemy logic (movement, pathfinding, attacks) | [ ] |
-| `jax_stage.py` | Stage generation | [ ] |
-| `jax_rewards.py` | Reward calculation | [ ] |
-| `jax_utils.py` | Common JAX utilities | [ ] |
+| `jax_env.py` | Main environment - reset, step, get_valid_actions | [x] Basic implementation |
+| `jax_state.py` | EnvState dataclass and constants | [x] Complete |
+| `jax_observation.py` | Observation building from state | [x] Complete |
+| `jax_actions.py` | Action execution (movement, siphon, programs) | [ ] Partial |
+| `jax_enemy.py` | Enemy logic (movement, pathfinding, attacks) | [ ] Not started |
+| `jax_stage.py` | Stage generation | [ ] Not started |
+| `jax_rewards.py` | Reward calculation | [ ] Partial |
+| `jax_utils.py` | Common JAX utilities | [ ] Not started |
 
 ### Data Structures
 
@@ -417,53 +419,53 @@ new_state = state.replace(player=new_player)
 
 ## Implementation Order
 
-### Phase 1: Foundation (Milestone 1)
-- [ ] `jax_state.py`: Define EnvState dataclass with all fields
-- [ ] `jax_observation.py`: Implement observation encoding
-- [ ] `jax_env.py`: Basic reset() that creates valid initial state
-- [ ] Update `jax_env_wrapper.py`: Implement set_state() for tests
-- [ ] **Test**: `test_interface_smoke.py` passes
+### Phase 1: Foundation (Milestone 1) - COMPLETE
+- [x] `jax_state.py`: Define EnvState dataclass with all fields
+- [x] `jax_observation.py`: Implement observation encoding
+- [x] `jax_env.py`: Basic reset() that creates valid initial state
+- [x] Update `jax_env_wrapper.py`: Implement set_state() for tests
+- [x] **Test**: `test_interface_smoke.py` passes
 
-### Phase 2: Movement (Milestone 2)
-- [ ] `jax_actions.py`: Implement _execute_move() for basic movement
-- [ ] Grid bounds checking and block collision
-- [ ] Turn counter increment
-- [ ] **Test**: Basic movement tests in `test_movement.py`
+### Phase 2: Movement (Milestone 2) - IN PROGRESS
+- [x] `jax_actions.py`: Implement _execute_move() for basic movement
+- [x] Grid bounds checking and block collision
+- [x] Turn counter increment
+- [ ] **Test**: Basic movement tests in `test_movement.py` (partial - some failing)
 
-### Phase 3: Enemies (Milestones 3-5)
-- [ ] Enemy representation and visibility (Cryptog line-of-sight)
-- [ ] Line-of-sight attack detection
-- [ ] Combat (damage calculation, enemy death)
-- [ ] Enemy movement and BFS pathfinding
+### Phase 3: Enemies (Milestones 3-5) - INCOMPLETE
+- [x] Enemy representation and visibility (Cryptog line-of-sight)
+- [x] Line-of-sight attack detection
+- [x] Combat (damage calculation, enemy death)
+- [ ] Enemy movement and BFS pathfinding (tests failing)
 - [ ] Enemy attacks on player
 - [ ] **Test**: `test_enemies.py`, combat tests in `test_movement.py`
 
-### Phase 4: Siphon (Milestone 6)
-- [ ] Siphon action execution
-- [ ] Block siphoning logic
+### Phase 4: Siphon (Milestone 6) - INCOMPLETE
+- [x] Siphon action execution (basic)
+- [ ] Block siphoning logic (not collecting resources or marking blocks)
 - [ ] Transmission creation and countdown
 - [ ] Enemy spawning from transmissions
 - [ ] **Test**: `test_siphon.py`
 
-### Phase 5: Stage Transitions (Milestone 7)
-- [ ] Exit detection at (5,5)
+### Phase 5: Stage Transitions (Milestone 7) - INCOMPLETE
+- [x] Exit detection at (5,5)
 - [ ] Stage generation
-- [ ] Player stat preservation
+- [ ] Player stat preservation (HP not restored)
 - [ ] **Test**: `test_stages.py`
 
-### Phase 6: Basic Programs (Milestone 8)
-- [ ] Program ownership tracking
-- [ ] Cost deduction (credits, energy)
-- [ ] Applicability checking
-- [ ] Implement: WAIT
-- [ ] Implement: SIPH+
-- [ ] Implement: EXCH
-- [ ] Implement: SHOW
-- [ ] Implement: RESET
-- [ ] Implement: CALM
+### Phase 6: Basic Programs (Milestone 8) - INCOMPLETE
+- [x] Program ownership tracking
+- [x] Cost deduction (credits, energy)
+- [x] Applicability checking
+- [x] Implement: WAIT
+- [ ] Implement: SIPH+ (not implemented)
+- [ ] Implement: EXCH (not implemented)
+- [ ] Implement: SHOW (not implemented)
+- [ ] Implement: RESET (not implemented)
+- [ ] Implement: CALM (not implemented)
 - [ ] **Test**: Corresponding tests in `test_programs.py`
 
-### Phase 7: Combat Programs (Milestone 9)
+### Phase 7: Combat Programs (Milestone 9) - INCOMPLETE
 - [ ] Implement: PUSH
 - [ ] Implement: PULL
 - [ ] Implement: ROW
@@ -474,7 +476,7 @@ new_state = state.replace(player=new_player)
 - [ ] Implement: ANTI-V
 - [ ] **Test**: Combat program tests
 
-### Phase 8: Complex Programs (Milestone 10)
+### Phase 8: Complex Programs (Milestone 10) - INCOMPLETE
 - [ ] Implement: WARP
 - [ ] Implement: POLY
 - [ ] Implement: CRASH
@@ -486,15 +488,15 @@ new_state = state.replace(player=new_player)
 - [ ] Implement: ATK+
 - [ ] **Test**: All `test_programs.py` tests
 
-### Phase 9: Scheduled Tasks (Milestone 11)
+### Phase 9: Scheduled Tasks (Milestone 11) - INCOMPLETE
 - [ ] Scheduled task interval calculation
 - [ ] Transmission spawning from scheduled tasks
 - [ ] CALM program effect
 - [ ] Siphon delay effect
 - [ ] **Test**: `test_scheduled_tasks.py`
 
-### Phase 10: Rewards and Action Masking (Milestone 12)
-- [ ] Full reward calculation
+### Phase 10: Rewards and Action Masking (Milestone 12) - INCOMPLETE
+- [ ] Full reward calculation (kill rewards, data siphon rewards not working)
 - [ ] Complete action masking logic
 - [ ] **Test**: `test_rewards.py`, `test_action_mask.py`
 
@@ -522,8 +524,8 @@ pytest tests/parity/test_enemies.py -k jax -v          # Phase 3
 
 Update `jax_env_wrapper.py` to implement:
 
-- [ ] **set_state()**: Convert GameState dataclass to JAX EnvState
-- [ ] **get_internal_state()**: Extract hidden state for implementation tests
+- [x] **set_state()**: Convert GameState dataclass to JAX EnvState
+- [x] **get_internal_state()**: Extract hidden state for implementation tests
 
 ```python
 def set_state(self, state: GameState) -> Observation:
@@ -560,14 +562,14 @@ def set_state(self, state: GameState) -> Observation:
 
 ## Dependencies
 
-- [ ] `jax`: Core JAX library
-- [ ] `flax`: For `struct.dataclass`
+- [x] `jax`: Core JAX library
+- [x] `flax`: For `struct.dataclass`
 - [x] `numpy`: Existing, for wrapper conversions
 
 ## Verification Checklist
 
-- [ ] `test_interface_smoke.py` - JAX passes
-- [ ] `test_movement.py` - JAX passes
+- [x] `test_interface_smoke.py` - JAX passes
+- [ ] `test_movement.py` - JAX passes (partial)
 - [ ] `test_enemies.py` - JAX passes
 - [ ] `test_programs.py` - JAX passes
 - [ ] `test_siphon.py` - JAX passes
