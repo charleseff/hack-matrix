@@ -104,6 +104,9 @@ def step(
     # Save previous state for reward calculation and UNDO
     state = _save_previous_state(state)
 
+    # Track if this is a movement action (only movement triggers exit check)
+    is_move_action = action < 4
+
     # Execute action
     state, turn_ends = _execute_action(state, action, subkey)
 
@@ -116,9 +119,11 @@ def step(
     )
 
     # Check game end conditions
+    # Only movement actions can complete the stage by reaching exit
+    # Programs like WARP can teleport to exit but don't complete the stage
     player_died = state.player.hp <= 0
     reached_exit = (state.player.row == EXIT_ROW) & (state.player.col == EXIT_COL)
-    stage_complete = reached_exit & (state.stage <= 8)
+    stage_complete = reached_exit & (state.stage <= 8) & is_move_action
 
     # Advance stage if complete
     state = jax.lax.cond(

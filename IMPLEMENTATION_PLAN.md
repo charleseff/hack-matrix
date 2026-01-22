@@ -4,7 +4,7 @@
 
 **Success Criteria**: All parity tests pass with `pytest tests/parity/ -k jax -v`
 
-**Current Status**: 82 tests passing, 66 tests failing
+**Current Status**: 148 tests passing, 0 tests failing (ALL TESTS PASS!)
 
 ## Current State Assessment
 
@@ -17,7 +17,7 @@
 
 ### What's Missing
 - [x] Full JAX `EnvState` dataclass with all game state fields
-- [ ] Game logic (movement, combat, siphon, programs, enemy AI)
+- [x] Game logic (movement, combat, siphon, programs, enemy AI)
 - [x] Observation building from JAX state
 - [x] `set_state()` for test compatibility
 - [x] `get_internal_state()` for implementation tests
@@ -28,14 +28,14 @@
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `jax_env.py` | Main environment - reset, step, get_valid_actions | [x] Basic implementation |
+| `jax_env.py` | Main environment - reset, step, get_valid_actions | [x] Complete |
 | `jax_state.py` | EnvState dataclass and constants | [x] Complete |
 | `jax_observation.py` | Observation building from state | [x] Complete |
-| `jax_actions.py` | Action execution (movement, siphon, programs) | [ ] Partial |
-| `jax_enemy.py` | Enemy logic (movement, pathfinding, attacks) | [ ] Not started |
-| `jax_stage.py` | Stage generation | [ ] Not started |
-| `jax_rewards.py` | Reward calculation | [ ] Partial |
-| `jax_utils.py` | Common JAX utilities | [ ] Not started |
+| `jax_actions.py` | Action execution (movement, siphon, programs) | [x] Complete |
+| `jax_enemy.py` | Enemy logic (movement, pathfinding, attacks) | [x] Complete |
+| `jax_stage.py` | Stage generation | [x] Complete |
+| `jax_rewards.py` | Reward calculation | [x] Complete |
+| `jax_utils.py` | Common JAX utilities | [x] Complete |
 
 ### Data Structures
 
@@ -426,85 +426,87 @@ new_state = state.replace(player=new_player)
 - [x] Update `jax_env_wrapper.py`: Implement set_state() for tests
 - [x] **Test**: `test_interface_smoke.py` passes
 
-### Phase 2: Movement (Milestone 2) - IN PROGRESS
+### Phase 2: Movement (Milestone 2) - COMPLETE
 - [x] `jax_actions.py`: Implement _execute_move() for basic movement
 - [x] Grid bounds checking and block collision
 - [x] Turn counter increment
-- [ ] **Test**: Basic movement tests in `test_movement.py` (partial - some failing)
+- [x] **Test**: Basic movement tests in `test_movement.py` pass
 
-### Phase 3: Enemies (Milestones 3-5) - INCOMPLETE
+### Phase 3: Enemies (Milestones 3-5) - COMPLETE
 - [x] Enemy representation and visibility (Cryptog line-of-sight)
 - [x] Line-of-sight attack detection
 - [x] Combat (damage calculation, enemy death)
-- [ ] Enemy movement and BFS pathfinding (tests failing)
-- [ ] Enemy attacks on player
-- [ ] **Test**: `test_enemies.py`, combat tests in `test_movement.py`
+- [x] Enemy movement and BFS pathfinding
+- [x] Enemy attacks on player
+- [x] **Test**: `test_enemies.py`, combat tests in `test_movement.py` pass
 
-### Phase 4: Siphon (Milestone 6) - INCOMPLETE
-- [x] Siphon action execution (basic)
-- [ ] Block siphoning logic (not collecting resources or marking blocks)
-- [ ] Transmission creation and countdown
-- [ ] Enemy spawning from transmissions
-- [ ] **Test**: `test_siphon.py`
+### Phase 4: Siphon (Milestone 6) - COMPLETE
+- [x] Siphon action execution
+- [x] Block siphoning logic (collecting resources, marking blocks)
+- [x] Transmission creation and countdown
+- [x] Enemy spawning from transmissions
+- [x] **Test**: `test_siphon.py` passes
 
-### Phase 5: Stage Transitions (Milestone 7) - INCOMPLETE
-- [x] Exit detection at (5,5)
-- [ ] Stage generation
-- [ ] Player stat preservation (HP not restored)
-- [ ] **Test**: `test_stages.py`
+### Phase 5: Stage Transitions (Milestone 7) - COMPLETE
+- [x] Exit detection at (5,5) - only movement actions (0-3) trigger stage completion
+- [x] Stage generation
+- [x] Player stat preservation (HP not restored)
+- [x] **Test**: `test_stages.py` passes
 
-### Phase 6: Basic Programs (Milestone 8) - INCOMPLETE
+**Key Fix**: Only movement actions (0-3) trigger stage completion when player reaches exit at (5,5). Programs like WARP can teleport to exit position but don't complete the stage, matching Swift behavior.
+
+### Phase 6: Basic Programs (Milestone 8) - COMPLETE
 - [x] Program ownership tracking
 - [x] Cost deduction (credits, energy)
 - [x] Applicability checking
 - [x] Implement: WAIT
-- [ ] Implement: SIPH+ (not implemented)
-- [ ] Implement: EXCH (not implemented)
-- [ ] Implement: SHOW (not implemented)
-- [ ] Implement: RESET (not implemented)
-- [ ] Implement: CALM (not implemented)
-- [ ] **Test**: Corresponding tests in `test_programs.py`
+- [x] Implement: SIPH+
+- [x] Implement: EXCH
+- [x] Implement: SHOW
+- [x] Implement: RESET
+- [x] Implement: CALM
+- [x] **Test**: Corresponding tests in `test_programs.py` pass
 
-### Phase 7: Combat Programs (Milestone 9) - INCOMPLETE
-- [ ] Implement: PUSH
-- [ ] Implement: PULL
-- [ ] Implement: ROW
-- [ ] Implement: COL
-- [ ] Implement: DEBUG
-- [ ] Implement: HACK
-- [ ] Implement: D_BOM
-- [ ] Implement: ANTI-V
-- [ ] **Test**: Combat program tests
+### Phase 7: Combat Programs (Milestone 9) - COMPLETE
+- [x] Implement: PUSH
+- [x] Implement: PULL
+- [x] Implement: ROW
+- [x] Implement: COL
+- [x] Implement: DEBUG
+- [x] Implement: HACK
+- [x] Implement: D_BOM
+- [x] Implement: ANTI-V
+- [x] **Test**: Combat program tests pass
 
-### Phase 8: Complex Programs (Milestone 10) - INCOMPLETE
-- [ ] Implement: WARP
-- [ ] Implement: POLY
-- [ ] Implement: CRASH
-- [ ] Implement: UNDO
-- [ ] Implement: STEP
-- [ ] Implement: SCORE
-- [ ] Implement: REDUC
-- [ ] Implement: DELAY
-- [ ] Implement: ATK+
-- [ ] **Test**: All `test_programs.py` tests
+### Phase 8: Complex Programs (Milestone 10) - COMPLETE
+- [x] Implement: WARP
+- [x] Implement: POLY
+- [x] Implement: CRASH
+- [x] Implement: UNDO
+- [x] Implement: STEP
+- [x] Implement: SCORE
+- [x] Implement: REDUC
+- [x] Implement: DELAY
+- [x] Implement: ATK+
+- [x] **Test**: All `test_programs.py` tests pass
 
-### Phase 9: Scheduled Tasks (Milestone 11) - INCOMPLETE
-- [ ] Scheduled task interval calculation
-- [ ] Transmission spawning from scheduled tasks
-- [ ] CALM program effect
-- [ ] Siphon delay effect
-- [ ] **Test**: `test_scheduled_tasks.py`
+### Phase 9: Scheduled Tasks (Milestone 11) - COMPLETE
+- [x] Scheduled task interval calculation
+- [x] Transmission spawning from scheduled tasks
+- [x] CALM program effect
+- [x] Siphon delay effect
+- [x] **Test**: `test_scheduled_tasks.py` passes
 
-### Phase 10: Rewards and Action Masking (Milestone 12) - INCOMPLETE
-- [ ] Full reward calculation (kill rewards, data siphon rewards not working)
-- [ ] Complete action masking logic
-- [ ] **Test**: `test_rewards.py`, `test_action_mask.py`
+### Phase 10: Rewards and Action Masking (Milestone 12) - COMPLETE
+- [x] Full reward calculation (kill rewards, data siphon rewards)
+- [x] Complete action masking logic
+- [x] **Test**: `test_rewards.py`, `test_action_mask.py` pass
 
-### Phase 11: Final Parity (Milestone 13)
-- [ ] Edge case fixes
-- [ ] Determinism verification
-- [ ] Full test suite
-- [ ] **Test**: All tests green
+### Phase 11: Final Parity (Milestone 13) - COMPLETE
+- [x] Edge case fixes
+- [x] Determinism verification
+- [x] Full test suite
+- [x] **Test**: All 148 tests pass
 
 ## Test Strategy
 
@@ -569,14 +571,14 @@ def set_state(self, state: GameState) -> Observation:
 ## Verification Checklist
 
 - [x] `test_interface_smoke.py` - JAX passes
-- [ ] `test_movement.py` - JAX passes (partial)
-- [ ] `test_enemies.py` - JAX passes
-- [ ] `test_programs.py` - JAX passes
-- [ ] `test_siphon.py` - JAX passes
-- [ ] `test_stages.py` - JAX passes
-- [ ] `test_rewards.py` - JAX passes
-- [ ] `test_action_mask.py` - JAX passes
-- [ ] `test_turns.py` - JAX passes
-- [ ] `test_edge_cases.py` - JAX passes
-- [ ] `test_scheduled_tasks.py` - JAX passes
-- [ ] Implementation tests pass
+- [x] `test_movement.py` - JAX passes
+- [x] `test_enemies.py` - JAX passes
+- [x] `test_programs.py` - JAX passes
+- [x] `test_siphon.py` - JAX passes
+- [x] `test_stages.py` - JAX passes
+- [x] `test_rewards.py` - JAX passes
+- [x] `test_action_mask.py` - JAX passes
+- [x] `test_turns.py` - JAX passes
+- [x] `test_edge_cases.py` - JAX passes
+- [x] `test_scheduled_tasks.py` - JAX passes
+- [x] Implementation tests pass
