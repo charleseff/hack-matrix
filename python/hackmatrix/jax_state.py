@@ -91,30 +91,31 @@ PROGRAM_ATK_PLUS = 21  # Action 26
 PROGRAM_HACK = 22      # Action 27
 
 # Program costs: [credits, energy] for each program (0-22)
+# Based on Swift reference in HackMatrix/Program.swift
 PROGRAM_COSTS = jnp.array([
-    [0, 1],   # PUSH - 1 energy
-    [0, 1],   # PULL - 1 energy
-    [0, 3],   # CRASH - 3 energy
-    [0, 2],   # WARP - 2 energy
-    [0, 2],   # POLY - 2 energy
-    [0, 0],   # WAIT - free
-    [0, 2],   # DEBUG - 2 energy
-    [0, 2],   # ROW - 2 energy
-    [0, 2],   # COL - 2 energy
-    [0, 2],   # UNDO - 2 energy
-    [0, 2],   # STEP - 2 energy
-    [1, 0],   # SIPH+ - 1 credit
-    [0, 0],   # EXCH - free (converts)
-    [0, 1],   # SHOW - 1 energy
-    [0, 1],   # RESET - 1 energy
-    [2, 0],   # CALM - 2 credits
-    [0, 2],   # D_BOM - 2 energy
-    [0, 2],   # DELAY - 2 energy
-    [0, 2],   # ANTI-V - 2 energy
-    [1, 0],   # SCORE - 1 credit
-    [1, 0],   # REDUC - 1 credit
-    [2, 0],   # ATK+ - 2 credits
-    [0, 3],   # HACK - 3 energy
+    [0, 2],   # PUSH - 2 energy
+    [0, 2],   # PULL - 2 energy
+    [3, 2],   # CRASH - 3 credits, 2 energy
+    [2, 2],   # WARP - 2 credits, 2 energy
+    [1, 1],   # POLY - 1 credit, 1 energy
+    [0, 1],   # WAIT - 1 energy
+    [3, 0],   # DEBUG - 3 credits
+    [3, 1],   # ROW - 3 credits, 1 energy
+    [3, 1],   # COL - 3 credits, 1 energy
+    [1, 0],   # UNDO - 1 credit
+    [0, 3],   # STEP - 3 energy
+    [5, 0],   # SIPH+ - 5 credits
+    [4, 0],   # EXCH - 4 credits
+    [2, 0],   # SHOW - 2 credits
+    [0, 4],   # RESET - 4 energy
+    [2, 4],   # CALM - 2 credits, 4 energy
+    [3, 0],   # D_BOM - 3 credits
+    [1, 2],   # DELAY - 1 credit, 2 energy
+    [3, 0],   # ANTI-V - 3 credits
+    [0, 5],   # SCORE - 5 energy
+    [2, 1],   # REDUC - 2 credits, 1 energy
+    [4, 4],   # ATK+ - 4 credits, 4 energy
+    [2, 2],   # HACK - 2 credits, 2 energy
 ], dtype=jnp.int32)
 
 # Exit position
