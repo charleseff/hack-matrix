@@ -1,6 +1,6 @@
 # Specs Directory
 
-Design documents and implementation specifications for HackMatrix.
+Design documents and implementation specifications for HackMatrix. As part of studying this document you may inspect the specs in the index provided.
 
 ## Current Focus
 
