@@ -6,13 +6,14 @@ Watch a trained JAX/PureJaxRL agent play HackMatrix in visual mode.
 import argparse
 import sys
 from pathlib import Path
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from hackmatrix import HackEnv
-from hackmatrix.purejaxrl.checkpointing import load_params_npz, unflatten_params
+from hackmatrix.purejaxrl.checkpointing import load_params_npz, unflatten_params, infer_architecture
 from hackmatrix.purejaxrl.masked_ppo import ActorCritic
 from hackmatrix.jax_env import NUM_ACTIONS
 
@@ -38,8 +39,8 @@ def watch_agent(
     model_path: str,
     episodes: int = 3,
     max_steps: int = 500,
-    hidden_dim: int = 256,
-    num_layers: int = 2,
+    hidden_dim: Optional[int] = None,
+    num_layers: Optional[int] = None,
     debug: bool = False,
     info: bool = False,
 ):
@@ -50,8 +51,8 @@ def watch_agent(
         model_path: Path to the saved params (.npz file)
         episodes: Number of episodes to watch
         max_steps: Maximum steps per episode
-        hidden_dim: Hidden layer dimension (must match training)
-        num_layers: Number of hidden layers (must match training)
+        hidden_dim: Hidden layer dimension (auto-detected if None)
+        num_layers: Number of hidden layers (auto-detected if None)
         debug: Enable verbose debug logging
         info: Enable info-level logging (less verbose)
     """
@@ -77,6 +78,14 @@ def watch_agent(
     params = unflatten_params(flat_params)
     print(f"Loaded {len(flat_params)} parameter arrays")
 
+    # Auto-detect architecture from checkpoint
+    detected = infer_architecture(flat_params)
+    if hidden_dim is None:
+        hidden_dim = detected["hidden_dim"]
+    if num_layers is None:
+        num_layers = detected["num_layers"]
+    print(f"Architecture: hidden_dim={hidden_dim}, num_layers={num_layers}")
+
     # Create network with same architecture as training
     obs_dim = 10 + 23 + (6 * 6 * 42)  # 1545
     network = ActorCritic(
@@ -92,8 +101,7 @@ def watch_agent(
         print(f"Network initialized: {logits.shape[0]} actions, value={value:.3f}")
     except Exception as e:
         print(f"Error: Parameters don't match network architecture: {e}")
-        print(f"  Expected: hidden_dim={hidden_dim}, num_layers={num_layers}")
-        print("  Try adjusting --hidden-dim and --num-layers to match training config")
+        print(f"  Detected: hidden_dim={detected['hidden_dim']}, num_layers={detected['num_layers']}")
         return
 
     # JIT compile the forward pass for speed
@@ -167,17 +175,17 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Watch model from checkpoints
+  # Watch model from checkpoints (architecture auto-detected)
   python watch_jax_agent.py python/checkpoints/final_params.npz
-
-  # Watch with custom architecture
-  python watch_jax_agent.py python/checkpoints/final_params.npz --hidden-dim 512 --num-layers 3
 
   # Watch 5 episodes
   python watch_jax_agent.py python/checkpoints/final_params.npz --episodes 5
 
   # Auto-find latest checkpoint
   python watch_jax_agent.py --latest
+
+  # Override auto-detected architecture (rarely needed)
+  python watch_jax_agent.py python/checkpoints/final_params.npz --hidden-dim 512 --num-layers 3
         """,
     )
 
@@ -202,14 +210,14 @@ Examples:
     parser.add_argument(
         "--hidden-dim",
         type=int,
-        default=256,
-        help="Hidden layer dimension (default: 256, must match training)",
+        default=None,
+        help="Hidden layer dimension (auto-detected from checkpoint if not specified)",
     )
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=2,
-        help="Number of hidden layers (default: 2, must match training)",
+        default=None,
+        help="Number of hidden layers (auto-detected from checkpoint if not specified)",
     )
     parser.add_argument(
         "--latest",

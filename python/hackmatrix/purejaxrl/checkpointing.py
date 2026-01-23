@@ -156,6 +156,39 @@ def unflatten_params(flat_params: Dict[str, np.ndarray]) -> Dict[str, Any]:
     return nested
 
 
+def infer_architecture(flat_params: Dict[str, np.ndarray]) -> Dict[str, int]:
+    """Infer network architecture from saved parameters.
+
+    Args:
+        flat_params: Flattened parameter dictionary from load_params_npz
+
+    Returns:
+        Dict with 'hidden_dim' and 'num_layers'
+    """
+    # Find all Dense layer kernels
+    dense_kernels = {}
+    for key, value in flat_params.items():
+        if "Dense_" in key and ".kernel" in key:
+            # Extract layer number from key like "params.Dense_0.kernel"
+            parts = key.split(".")
+            for part in parts:
+                if part.startswith("Dense_"):
+                    layer_num = int(part.split("_")[1])
+                    dense_kernels[layer_num] = value.shape
+                    break
+
+    if not dense_kernels:
+        raise ValueError("No Dense layers found in parameters")
+
+    # hidden_dim is the output dim of Dense_0
+    hidden_dim = dense_kernels[0][1]
+
+    # num_layers = total Dense layers - 2 (actor and critic heads)
+    num_layers = len(dense_kernels) - 2
+
+    return {"hidden_dim": hidden_dim, "num_layers": num_layers}
+
+
 def get_checkpoint_steps(path: str) -> list:
     """Get list of available checkpoint steps.
 
