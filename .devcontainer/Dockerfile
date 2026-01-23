@@ -17,9 +17,8 @@ RUN apt-get update && apt-get install -y \
     gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies (cached layer)
-COPY python/requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+# Python dependencies are installed in persistent venv (see devcontainer.json)
+# The venv is mounted as a volume and survives container rebuilds
 
 # Create non-root user (devcontainer convention)
 ARG USERNAME=vscode
