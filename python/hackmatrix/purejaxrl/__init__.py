@@ -14,7 +14,7 @@ Usage:
 """
 
 from .env_wrapper import HackMatrixGymnax, EnvParams
-from .masked_ppo import ActorCritic, Transition, masked_categorical
+from .masked_ppo import ActorCritic, Transition, masked_categorical, MaskedCategorical
 from .config import TrainConfig, get_device_config
 from .train import make_train
 
@@ -26,6 +26,7 @@ __all__ = [
     "ActorCritic",
     "Transition",
     "masked_categorical",
+    "MaskedCategorical",
     # Training
     "TrainConfig",
     "get_device_config",

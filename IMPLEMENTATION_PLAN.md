@@ -115,12 +115,30 @@ The PureJaxRL integration is complete for Phases 1-6 (CPU testing). All core fun
   - Test PPO compiles and runs 1 step
   - Test action masking works correctly
 
-### Phase 6: TPU Deployment - IN PROGRESS
+### Phase 6: Platform Testing - IN PROGRESS
 
-- [x] **6.1 Test on CPU locally** - COMPLETE (verified with multiple test runs)
-- [x] **6.2 Test on GPU (if available)** - N/A (no GPU in current environment)
-- [ ] **6.3 Test on TPU (Google TRC)** - PENDING (awaiting TRC project approval)
-- [x] **6.4 Document TPU-specific setup** - COMPLETE (`python/docs/TPU_SETUP.md`)
+- [x] **6.1 Test on CPU locally** - COMPLETE
+  - macOS ARM64 (Apple M4 Pro) with Python 3.12
+  - JAX 0.9.0 + jaxlib 0.9.0 running on CPU backend
+  - All 12 PureJaxRL tests pass
+  - Training script runs successfully (50K timesteps in ~8s)
+  - Use `venv-arm64/` for ARM64 Python on macOS
+
+- [ ] **6.2 Test on Metal GPU (Apple Silicon)** - BLOCKED
+  - jax-metal 0.1.1 installs and detects Apple M4 Pro GPU (48GB)
+  - **Issue**: `UNIMPLEMENTED: default_memory_space is not supported` error
+  - jax-metal is experimental and incompatible with JAX 0.9.0
+  - Workaround: Use `JAX_PLATFORMS=cpu` to force CPU backend
+
+- [ ] **6.3 Test on NVIDIA GPU (Linux container)** - PENDING
+  - Requires CUDA-capable GPU in dev container
+  - Install: `pip install jax[cuda12]`
+
+- [ ] **6.4 Test on TPU (Google TRC)** - PENDING
+  - Install: `pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html`
+  - Requires Google TPU Research Cloud access
+
+- [x] **6.5 Document TPU-specific setup** - COMPLETE (`python/docs/TPU_SETUP.md`)
 
 ## File Structure
 
@@ -194,11 +212,12 @@ class TrainConfig:
 
 ## Success Criteria
 
-1. **Training runs on CPU** - COMPLETE (Development and testing without TPU)
-2. **Training runs on GPU** - PENDING (Local GPU acceleration if available)
-3. **Training runs on TPU** - PENDING (Production training on Google TRC)
-4. **Action masking works** - COMPLETE (Invalid actions never selected)
-5. **Simple CLI interface** - COMPLETE (Single script to run training)
+1. **Training runs on CPU** - ✅ COMPLETE (macOS ARM64 verified)
+2. **Training runs on Metal GPU** - ⚠️ BLOCKED (jax-metal incompatible with JAX 0.9.0)
+3. **Training runs on NVIDIA GPU** - ⏳ PENDING (requires Linux container with CUDA)
+4. **Training runs on TPU** - ⏳ PENDING (requires Google TRC access)
+5. **Action masking works** - ✅ COMPLETE (Invalid actions never selected)
+6. **Simple CLI interface** - ✅ COMPLETE (Single script to run training)
 
 ## Dependencies
 

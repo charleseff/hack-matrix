@@ -2,7 +2,7 @@
 Action-masked PPO implementation for HackMatrix.
 
 This module provides:
-- Masked categorical distribution using distrax
+- Masked categorical distribution (pure JAX, no distrax dependency)
 - Actor-Critic network with Flax
 - PPO loss function with action masking support
 - Transition dataclass for storing rollout data
@@ -10,12 +10,59 @@ This module provides:
 
 import jax
 import jax.numpy as jnp
-import distrax
 import flax.linen as nn
 from flax import struct
-from typing import Sequence, Tuple
+from typing import Tuple
 
 from hackmatrix.jax_env import NUM_ACTIONS
+
+
+class MaskedCategorical:
+    """Categorical distribution with action masking (pure JAX implementation).
+
+    Replaces distrax.Categorical for compatibility with JAX 0.7.0+.
+    Invalid actions have their logits set to a large negative value.
+    """
+
+    # Large negative value for masking (not -inf to avoid NaN issues)
+    MASK_VALUE = -1e9
+
+    def __init__(self, logits: jax.Array):
+        """Initialize with (already masked) logits."""
+        self.logits = logits
+        # Compute log probabilities using log_softmax for numerical stability
+        self._log_probs = jax.nn.log_softmax(logits, axis=-1)
+        # Cache probabilities for entropy calculation
+        self._probs = jax.nn.softmax(logits, axis=-1)
+
+    def sample(self, seed: jax.Array) -> jax.Array:
+        """Sample from the distribution using Gumbel-max trick."""
+        # Gumbel-max trick: argmax(logits + Gumbel noise) samples from categorical
+        gumbel_noise = jax.random.gumbel(seed, shape=self.logits.shape)
+        return jnp.argmax(self.logits + gumbel_noise, axis=-1)
+
+    def log_prob(self, actions: jax.Array) -> jax.Array:
+        """Compute log probability of actions."""
+        # Handle both batched and unbatched cases
+        return jnp.take_along_axis(
+            self._log_probs,
+            actions[..., None],
+            axis=-1
+        ).squeeze(-1)
+
+    def entropy(self) -> jax.Array:
+        """Compute entropy of the distribution."""
+        # Entropy = -sum(p * log(p))
+        # Only sum over actions with non-negligible probability
+        # Using where to avoid 0 * -inf = nan
+        return -jnp.sum(
+            jnp.where(
+                self._probs > 1e-8,
+                self._probs * self._log_probs,
+                0.0
+            ),
+            axis=-1
+        )
 
 
 @struct.dataclass
@@ -40,10 +87,10 @@ class Transition:
     action_mask: jax.Array
 
 
-def masked_categorical(logits: jax.Array, mask: jax.Array) -> distrax.Categorical:
+def masked_categorical(logits: jax.Array, mask: jax.Array) -> MaskedCategorical:
     """Create categorical distribution with invalid actions masked.
 
-    Invalid actions have their logits set to -1e9 (effectively 0 probability
+    Invalid actions have their logits set to -inf (zero probability
     after softmax). This ensures the agent can only sample valid actions.
 
     Args:
@@ -51,11 +98,11 @@ def masked_categorical(logits: jax.Array, mask: jax.Array) -> distrax.Categorica
         mask: Boolean mask where True = valid action, shape (..., num_actions)
 
     Returns:
-        Categorical distribution that only samples from valid actions
+        MaskedCategorical distribution that only samples from valid actions
     """
-    # Set invalid action logits to large negative value
-    masked_logits = jnp.where(mask, logits, -1e9)
-    return distrax.Categorical(logits=masked_logits)
+    # Set invalid action logits to large negative value (will be ~0 probability after softmax)
+    masked_logits = jnp.where(mask, logits, MaskedCategorical.MASK_VALUE)
+    return MaskedCategorical(logits=masked_logits)
 
 
 class ActorCritic(nn.Module):

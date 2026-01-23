@@ -17,8 +17,8 @@ jax>=0.4.20
 jaxlib>=0.4.20
 flax>=0.8.0
 optax>=0.1.7
-distrax>=0.1.3
 chex>=0.1.8
+# Note: distrax removed - we use pure JAX for masked categorical (compatible with JAX 0.7.0+)
 
 # Development tools
 ruff>=0.1.0
