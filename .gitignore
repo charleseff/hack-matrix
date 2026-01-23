@@ -18,9 +18,11 @@ python/__pycache__/
 # ML training artifacts
 python/logs/
 python/models*/
+python/checkpoints/
 old_training_incomplete_obs/
 logs*/
 models/
+checkpoints/
 
 **/nohup.out
 # W&B

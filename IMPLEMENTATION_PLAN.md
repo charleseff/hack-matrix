@@ -2,11 +2,12 @@
 
 ## Current State
 
-The PureJaxRL integration is complete for Phases 1-5. All core functionality is implemented and tested.
+The PureJaxRL integration is complete for Phases 1-6 (CPU testing). All core functionality is implemented and tested.
 
 ### Test Results
 - **12/12 PureJaxRL tests passing** (`python/tests/test_purejaxrl.py`)
-- **349/350 total tests passing** (1 pre-existing failure unrelated to PureJaxRL changes)
+- **350/350 total tests passing** (all tests pass!)
+- **CPU training verified** (both quick and moderate-length runs successful)
 
 ### Completed
 - [x] JAX environment implementation (`python/hackmatrix/jax_env/`)
@@ -114,12 +115,12 @@ The PureJaxRL integration is complete for Phases 1-5. All core functionality is 
   - Test PPO compiles and runs 1 step
   - Test action masking works correctly
 
-### Phase 6: TPU Deployment - PENDING (Future Work)
+### Phase 6: TPU Deployment - IN PROGRESS
 
-- [ ] **6.1 Test on CPU locally**
-- [ ] **6.2 Test on GPU (if available)**
-- [ ] **6.3 Test on TPU (Google TRC)**
-- [ ] **6.4 Document TPU-specific setup**
+- [x] **6.1 Test on CPU locally** - COMPLETE (verified with multiple test runs)
+- [x] **6.2 Test on GPU (if available)** - N/A (no GPU in current environment)
+- [ ] **6.3 Test on TPU (Google TRC)** - PENDING (awaiting TRC project approval)
+- [x] **6.4 Document TPU-specific setup** - COMPLETE (`python/docs/TPU_SETUP.md`)
 
 ## File Structure
 

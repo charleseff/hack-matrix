@@ -281,8 +281,127 @@ def enemy_attacks(state: EnvState) -> EnvState:
 
 
 def check_scheduled_tasks(state: EnvState) -> EnvState:
-    """Check and execute scheduled tasks."""
-    # TODO: Implement scheduled task spawning
+    """Check and execute scheduled tasks.
+
+    If current turn >= next_scheduled_task_turn and tasks are not disabled:
+    - Spawn 1 random transmission with is_from_scheduled_task=True
+    - Advance next_scheduled_task_turn by the interval
+    """
+    # Check if we should spawn
+    should_spawn = (
+        ~state.scheduled_tasks_disabled &
+        (state.scheduled_task_interval > 0) &
+        (state.turn >= state.next_scheduled_task_turn)
+    )
+
+    def spawn_scheduled_transmission(s: EnvState) -> EnvState:
+        """Spawn a single random transmission from scheduled task."""
+        # Find valid cells for transmission (not player, not blocks, not enemies, not transmissions)
+        player_row, player_col = s.player.row, s.player.col
+        player_mask = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_)
+        player_mask = player_mask.at[player_row, player_col].set(True)
+
+        # Check for blocks
+        has_block = (s.grid_block_type != BLOCK_EMPTY) & ~s.grid_block_siphoned
+
+        # Check for existing enemies
+        enemy_positions = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_)
+
+        def mark_enemy_pos(carry, idx):
+            grid = carry
+            is_active = s.enemy_mask[idx]
+            enemy = s.enemies[idx]
+            row = enemy[1]
+            col = enemy[2]
+
+            new_grid = jax.lax.cond(
+                is_active,
+                lambda: grid.at[row, col].set(True),
+                lambda: grid,
+            )
+            return new_grid, None
+
+        enemy_positions, _ = jax.lax.scan(
+            mark_enemy_pos,
+            enemy_positions,
+            jnp.arange(s.enemy_mask.shape[0]),
+        )
+
+        # Check for existing transmissions
+        trans_positions = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_)
+
+        def mark_trans_pos(carry, idx):
+            grid = carry
+            is_active = s.trans_mask[idx]
+            trans = s.transmissions[idx]
+            row = trans[0]
+            col = trans[1]
+
+            new_grid = jax.lax.cond(
+                is_active,
+                lambda: grid.at[row, col].set(True),
+                lambda: grid,
+            )
+            return new_grid, None
+
+        trans_positions, _ = jax.lax.scan(
+            mark_trans_pos,
+            trans_positions,
+            jnp.arange(s.trans_mask.shape[0]),
+        )
+
+        # Valid cells: not player, not blocks, not enemies, not transmissions
+        valid_cells = ~player_mask & ~has_block & ~enemy_positions & ~trans_positions
+
+        # Randomly select a cell using priorities
+        key, subkey = jax.random.split(s.rng_key)
+        priorities = jax.random.uniform(subkey, (GRID_SIZE * GRID_SIZE,))
+        priorities = jnp.where(valid_cells.flatten(), priorities, -1.0)
+        best_idx = jnp.argmax(priorities)
+
+        row = best_idx // GRID_SIZE
+        col = best_idx % GRID_SIZE
+
+        # Random enemy type
+        key, subkey = jax.random.split(key)
+        enemy_type = jax.random.randint(subkey, (), 0, 4)
+
+        # Find empty transmission slot
+        slot = jnp.argmin(s.trans_mask)
+        has_space = ~s.trans_mask.all()
+
+        # Transmission: [row, col, turns_remaining, enemy_type, spawned_from_siphon, is_from_scheduled_task]
+        trans_data = jnp.array([row, col, 1, enemy_type, 0, 1], dtype=jnp.int32)
+
+        new_transmissions = jax.lax.cond(
+            has_space,
+            lambda: s.transmissions.at[slot].set(trans_data),
+            lambda: s.transmissions,
+        )
+        new_trans_mask = jax.lax.cond(
+            has_space,
+            lambda: s.trans_mask.at[slot].set(True),
+            lambda: s.trans_mask,
+        )
+
+        # Advance next scheduled task turn
+        new_next_turn = s.turn + s.scheduled_task_interval
+
+        return s.replace(
+            transmissions=new_transmissions,
+            trans_mask=new_trans_mask,
+            next_scheduled_task_turn=new_next_turn,
+            rng_key=key,
+        )
+
+    # Only spawn if conditions are met
+    state = jax.lax.cond(
+        should_spawn,
+        spawn_scheduled_transmission,
+        lambda s: s,
+        state,
+    )
+
     return state
 
 
