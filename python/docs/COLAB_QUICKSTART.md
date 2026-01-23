@@ -2,18 +2,33 @@
 
 Get started with TPU training in 5 minutes using Google Colab (no signup or approval needed).
 
-## Step 1: Upload Notebook to Colab
+## Step 1: Open Notebook in Colab
 
-### Option A: Direct Upload (Recommended)
-1. Go to https://colab.research.google.com/
-2. File → Upload notebook
-3. Upload `python/notebooks/train_hackmatrix_tpu.ipynb`
+### Option A: Direct Link (Easiest - Recommended)
+Click this link to open directly in Colab:
+```
+https://colab.research.google.com/github/charleseff/hack-matrix/blob/main/python/notebooks/train_hackmatrix_tpu.ipynb
+```
 
-### Option B: From GitHub (After pushing)
+### Option B: From GitHub (Also Recommended)
 1. Go to https://colab.research.google.com/
 2. File → Open notebook → GitHub tab
 3. Enter: `charleseff/hack-matrix`
 4. Select `python/notebooks/train_hackmatrix_tpu.ipynb`
+
+**Benefits of using GitHub:**
+- ✅ Always get the latest version
+- ✅ Easy to pull updates if code changes
+- ✅ Can save a copy to your Drive with "Copy to Drive"
+- ✅ Consistent with repository code
+
+### Option C: Direct Upload (Fallback)
+1. Download `python/notebooks/train_hackmatrix_tpu.ipynb` from the repo
+2. Go to https://colab.research.google.com/
+3. File → Upload notebook
+4. Select the downloaded file
+
+⚠️ **Note:** If you upload directly, you'll need to re-upload if the notebook is updated.
 
 ## Step 2: Enable TPU
 
