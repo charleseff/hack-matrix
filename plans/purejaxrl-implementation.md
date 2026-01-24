@@ -134,11 +134,17 @@ The PureJaxRL integration is complete for Phases 1-6 (CPU testing). All core fun
   - Requires CUDA-capable GPU in dev container
   - Install: `pip install jax[cuda12]`
 
-- [ ] **6.4 Test on TPU (Google TRC)** - PENDING
+- [x] **6.4 Test on Google Colab (T4 GPU)** - PARTIAL
+  - Training runs successfully with memory-conservative settings
+  - **Issue found**: `ent_coef=0.01` caused entropy collapse (agents oscillate left-right)
+  - **Fix applied**: Changed default `ent_coef` to 0.1 (matches working SB3 config)
+  - **OOM during compilation**: Larger configs get killed; see Colab-specific settings below
+
+- [ ] **6.5 Test on TPU (Google TRC)** - PENDING
   - Install: `pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html`
   - Requires Google TPU Research Cloud access
 
-- [x] **6.5 Document TPU-specific setup** - COMPLETE (`python/docs/TPU_SETUP.md`)
+- [x] **6.6 Document TPU-specific setup** - COMPLETE (`python/docs/TPU_SETUP.md`)
 
 ## File Structure
 
@@ -204,20 +210,59 @@ class TrainConfig:
     update_epochs: int = 4
     clip_eps: float = 0.2
     vf_coef: float = 0.5
-    ent_coef: float = 0.01
+    ent_coef: float = 0.1         # IMPORTANT: 0.1+ prevents entropy collapse
     max_grad_norm: float = 0.5
     hidden_dim: int = 256
     num_layers: int = 2
 ```
 
+### Google Colab Settings (T4 GPU, 15GB VRAM)
+
+JAX compilation can be memory-intensive. For Colab free tier, use conservative settings:
+
+```bash
+# Recommended for Colab T4 (fits in memory, avoids OOM during compilation)
+python scripts/train_purejaxrl.py \
+    --num-envs 64 \
+    --num-steps 128 \
+    --hidden-dim 256 \
+    --num-layers 2 \
+    --ent-coef 0.1 \
+    --total-timesteps 10000000
+
+# If still OOM, reduce further:
+python scripts/train_purejaxrl.py \
+    --num-envs 32 \
+    --num-steps 64 \
+    --hidden-dim 128 \
+    --num-layers 2
+```
+
+**Key parameters affecting memory:**
+- `num_envs` - Environments run in parallel via vmap; main memory driver
+- `hidden_dim` - Network size; affects gradient memory
+- `batch_size` = num_envs × num_steps - Total transitions per update
+
+### Entropy Collapse Prevention
+
+**Symptom**: Agent learns to oscillate left-right instead of exploring.
+
+**Cause**: `ent_coef` too low → policy becomes deterministic before learning useful behavior.
+
+**Fix**: Use `ent_coef >= 0.1` (default is now 0.1, matching working SB3 config).
+
+**Monitoring**: Watch `entropy` metric - if it drops toward 0 early in training, entropy is collapsing.
+
 ## Success Criteria
 
 1. **Training runs on CPU** - ✅ COMPLETE (macOS ARM64 verified)
 2. **Training runs on Metal GPU** - ⚠️ BLOCKED (jax-metal incompatible with JAX 0.9.0)
-3. **Training runs on NVIDIA GPU** - ⏳ PENDING (requires Linux container with CUDA)
-4. **Training runs on TPU** - ⏳ PENDING (requires Google TRC access)
-5. **Action masking works** - ✅ COMPLETE (Invalid actions never selected)
-6. **Simple CLI interface** - ✅ COMPLETE (Single script to run training)
+3. **Training runs on Google Colab** - ✅ COMPLETE (T4 GPU verified with conservative settings)
+4. **Training runs on NVIDIA GPU (local)** - ⏳ PENDING (requires Linux container with CUDA)
+5. **Training runs on TPU** - ⏳ PENDING (requires Google TRC access)
+6. **Action masking works** - ✅ COMPLETE (Invalid actions never selected)
+7. **Simple CLI interface** - ✅ COMPLETE (Single script to run training)
+8. **No entropy collapse** - ✅ FIXED (ent_coef default changed to 0.1)
 
 ## Dependencies
 

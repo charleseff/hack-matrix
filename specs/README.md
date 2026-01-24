@@ -4,9 +4,9 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 ## Current Focus
 
-**Next spec:** [purejaxrl-integration.md](./purejaxrl-integration.md)
+**Active spec:** [testing-and-linting.md](./testing-and-linting.md)
 
-Integrate JAX environment with PureJaxRL for TPU-accelerated training with action masking.
+Pre-commit hooks using the `pre-commit` framework, parallel pytest, and ruff linting.
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -22,6 +22,7 @@ Integrate JAX environment with PureJaxRL for TPU-accelerated training with actio
 | [test-reorganization.md](./test-reorganization.md) | **Complete** | Reorganize tests, add scheduled task testing (depends on observation-and-attack-fixes) |
 | [jax-implementation.md](./jax-implementation.md) | **Complete** | Full JAX port of game logic for TPU training |
 | [purejaxrl-integration.md](./purejaxrl-integration.md) | **Active** | PureJaxRL integration with action-masked PPO for TPU training |
+| [testing-and-linting.md](./testing-and-linting.md) | **Active** | Pre-commit hooks, parallel pytest, ruff linting |
 | [ci-setup.md](./ci-setup.md) | **Deferred** | GitHub Actions CI for Swift and Python tests |
 
 ## Usage
