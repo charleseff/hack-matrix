@@ -30,7 +30,16 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"ms-python.python"
+				"ms-python.python",
+				"eamodio.gitlens",
+				"mads-hartmann.bash-ide-vscode",
+				"redhat.vscode-yaml",
+				"github.copilot",
+				"github.copilot-chat",
+				"percygrunwald.vscode-intellij-recent-files",
+				"anthropic.claude-code",
+				"tripplyons.pin-active",
+				"garytyler.darcula-pycharm"
 			]
 		}
 	},
