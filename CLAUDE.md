@@ -6,9 +6,11 @@
 
 ### Python Scripts
 
-- **Always activate venv** when running Python scripts
-- Command pattern: `cd python && source venv/bin/activate && python <script>`
-- Example: `cd python && source venv/bin/activate && python scripts/train.py`
+- **Platform-specific venvs**: `python/venv-macos` (macOS) and `python/venv-linux` (dev container)
+- **macOS**: `cd python && source venv-macos/bin/activate && python <script>`
+- **Dev container**: venv is auto-activated via `VIRTUAL_ENV` env var, just run `python <script>`
+- Example (macOS): `cd python && source venv-macos/bin/activate && python scripts/train.py`
+- Example (container): `python python/scripts/train.py`
 
 ### Building
 
@@ -39,8 +41,8 @@ Use VS Code Dev Containers for a full Linux dev environment with Swift, Python, 
 
 **Inside the container:**
 ```bash
-# Run training
-python3 python/scripts/train.py
+# Run training (venv is auto-activated)
+python python/scripts/train.py
 
 # Run Claude Code
 claude
@@ -49,7 +51,9 @@ claude
 swift build -c release
 ```
 
-The `HACKMATRIX_BINARY` env var is automatically set to the built executable.
+**Environment:**
+- `HACKMATRIX_BINARY` - path to built executable
+- `VIRTUAL_ENV` - points to `python/venv-linux` (auto-activated)
 
 ### Git Workflow
 
@@ -195,11 +199,11 @@ Swift responds with JSON on stdout:
 ### Running Python Tests
 
 ```bash
-# Run all tests with pytest
-cd python && source venv/bin/activate && pytest tests/ -v
+# macOS (activate venv first)
+cd python && source venv-macos/bin/activate && pytest tests/ -v
 
-# Run specific test file
-cd python && source venv/bin/activate && pytest tests/test_movement.py -v
+# Dev container (venv auto-activated)
+pytest python/tests/ -v
 ```
 
 ### Key Files
