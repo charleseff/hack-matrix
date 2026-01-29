@@ -17,8 +17,8 @@ RUN apt-get update && apt-get install -y \
     gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies are installed in persistent venv (see devcontainer.json)
-# The venv is mounted as a volume and survives container rebuilds
+# Python dependencies are installed in workspace venv (python/venv-linux)
+# See devcontainer.json for venv setup in postCreateCommand
 
 # Create non-root user (devcontainer convention)
 ARG USERNAME=vscode

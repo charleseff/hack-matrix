@@ -34,7 +34,10 @@ Before starting a major feature or architectural change, create a spec document 
 - **Deferred** - Planned but not yet started (may depend on other specs)
 - **Complete** - Fully implemented and verified
 
-When finishing a spec, update its status to **Complete** and set the next spec to **Active** in both the Current Focus section and the Specs Index table.
+**When finishing a spec:**
+1. Move `IMPLEMENTATION_PLAN.md` to `specs/[spec-name]-IMPLEMENTATION_PLAN.md`
+2. Update the spec's status to **Complete** in this README
+3. Set the next spec to **Active** in both Current Focus and Specs Index
 
 ## Firewall Notes
 

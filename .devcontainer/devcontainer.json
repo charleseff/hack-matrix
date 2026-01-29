@@ -22,12 +22,10 @@
 		// Mount it explicitly to ensure git user.name/email are available in the container.
 		"source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
 		"source=hack-matrix-claude-config,target=/home/vscode/.claude,type=volume",
-		"source=hack-matrix-zsh-history,target=/commandhistory,type=volume",
-		// Persistent Python venv - survives container rebuilds
-		"source=hack-matrix-venv,target=/home/vscode/hack-matrix-venv,type=volume"
+		"source=hack-matrix-zsh-history,target=/commandhistory,type=volume"
 	],
 	"updateRemoteUserUID": true,
-	"postCreateCommand": "sudo chown -R $(whoami) /commandhistory && sudo chown -R $(whoami) /home/vscode/hack-matrix-venv && (test -f /home/vscode/hack-matrix-venv/bin/activate || python3 -m venv /home/vscode/hack-matrix-venv) && /home/vscode/hack-matrix-venv/bin/pip install -r python/requirements.txt && swift build -c release",
+	"postCreateCommand": "sudo chown -R $(whoami) /commandhistory && (test -f python/venv-linux/bin/activate || python3 -m venv python/venv-linux) && python/venv-linux/bin/pip install -r python/requirements.txt && swift build -c release",
 	"postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
 	"customizations": {
 		"vscode": {
@@ -39,8 +37,8 @@
 	"remoteEnv": {
 		"HACKMATRIX_BINARY": "${containerWorkspaceFolder}/.build/release/HackMatrix",
 		"HISTFILE": "/commandhistory/.zsh_history",
-		// Use persistent venv from mounted volume
-		"VIRTUAL_ENV": "/home/vscode/hack-matrix-venv",
-		"PATH": "/home/vscode/hack-matrix-venv/bin:${containerEnv:PATH}"
+		// Auto-activate venv-linux for container
+		"VIRTUAL_ENV": "${containerWorkspaceFolder}/python/venv-linux",
+		"PATH": "${containerWorkspaceFolder}/python/venv-linux/bin:${containerEnv:PATH}"
 	}
 }

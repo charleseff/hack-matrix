@@ -13,7 +13,7 @@ DerivedData/
 .build*/
 
 # Python
-python/venv/
+python/venv*/
 python/__pycache__/
 *.pyc
 *.egg-info/
@@ -22,6 +22,7 @@ python/__pycache__/
 python/logs/
 python/models*/
 python/checkpoints/
+**/.jax_cache/
 old_training_incomplete_obs/
 logs*/
 models/
