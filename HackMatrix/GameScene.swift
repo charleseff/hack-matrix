@@ -11,6 +11,7 @@ class GameScene: SKScene {
     var cellContentNodes: [SKNode] = []
     var isGameOver: Bool = false
     var isAnimating: Bool = false
+    private var gameGeneration: Int = 0  // Incremented on reset to invalidate stale callbacks
     var programButtons: [ProgramType: SKNode] = [:]
 
     // Visual CLI mode controller
@@ -718,6 +719,9 @@ override func mouseDown(with event: NSEvent) {
     // MARK: - Game Flow Helpers
 
     func restartGame() {
+        // Increment generation to invalidate any pending animation callbacks
+        gameGeneration += 1
+
         // Remove all nodes
         removeAllChildren()
 
@@ -753,16 +757,20 @@ override func mouseDown(with event: NSEvent) {
         // Log reward for manual testing/debugging
         print("🎯 Action: \(action) → Reward: \(String(format: "%.3f", result.rewardBreakdown.total)) | Score: \(gameState.player.score) | Stage: \(gameState.currentStage)")
 
+        // Capture current generation to detect if reset happens during animation
+        let generation = self.gameGeneration
+
         if result.gameWon {
             animateActionResult(result) { [weak self] in
-                self?.showVictory()
-                self?.visualController?.onAnimationComplete(actionResult: result)
+                guard let self = self, self.gameGeneration == generation else { return }
+                self.showVictory()
+                self.visualController?.onAnimationComplete(actionResult: result)
             }
             return
         }
 
         animateActionResult(result) { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, self.gameGeneration == generation else { return }
             self.updateDisplay()
             if result.playerDied {
                 self.showGameOver()
@@ -892,16 +900,21 @@ override func mouseDown(with event: NSEvent) {
         )
 
         let gameOverLabel = SKLabelNode(text: "GAME OVER")
+        gameOverLabel.name = "gameOverLabel"
         gameOverLabel.fontSize = 48
         gameOverLabel.fontColor = .red
         gameOverLabel.position = CGPoint(x: size.width / 2, y: size.height / 2 + 20)
         addChild(gameOverLabel)
 
-        let restartLabel = SKLabelNode(text: "Press R to Restart")
-        restartLabel.fontSize = 24
-        restartLabel.fontColor = .white
-        restartLabel.position = CGPoint(x: size.width / 2, y: size.height / 2 - 30)
-        addChild(restartLabel)
+        // Only show restart prompt for manual play, not for agent-controlled visual mode
+        if visualController == nil {
+            let restartLabel = SKLabelNode(text: "Press R to Restart")
+            restartLabel.name = "restartLabel"
+            restartLabel.fontSize = 24
+            restartLabel.fontColor = .white
+            restartLabel.position = CGPoint(x: size.width / 2, y: size.height / 2 - 30)
+            addChild(restartLabel)
+        }
     }
 
     func showVictory() {

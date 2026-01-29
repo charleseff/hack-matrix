@@ -6,8 +6,14 @@ set -e
 
 if [[ "$(uname)" == "Darwin" ]]; then
     BUILD_PATH=".build-macos"
+
+    # Build SPM (headless) version
+    swift build --build-path "$BUILD_PATH" "$@"
+
+    # Also build Xcode GUI app (needed for visual mode)
+    echo "Building Xcode GUI app..."
+    xcodebuild -scheme HackMatrix -configuration Debug build -quiet
 else
     BUILD_PATH=".build-linux"
+    exec swift build --build-path "$BUILD_PATH" "$@"
 fi
-
-exec swift build --build-path "$BUILD_PATH" "$@"
