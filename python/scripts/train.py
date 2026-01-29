@@ -6,8 +6,12 @@ Train a MaskablePPO agent to play HackMatrix with action masking.
 
 import hashlib
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import wandb
 from sb3_contrib import MaskablePPO

@@ -4,8 +4,12 @@ Validate that all observation space data is correctly passed from Swift to Pytho
 Tests across different game scenarios to ensure comprehensive coverage.
 """
 
+import os
 import sys
 from collections import defaultdict
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 

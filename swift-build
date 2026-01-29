@@ -1,0 +1,13 @@
+#!/bin/bash
+# Platform-aware Swift build wrapper
+# Automatically uses .build-macos or .build-linux based on platform
+
+set -e
+
+if [[ "$(uname)" == "Darwin" ]]; then
+    BUILD_PATH=".build-macos"
+else
+    BUILD_PATH=".build-linux"
+fi
+
+exec swift build --build-path "$BUILD_PATH" "$@"

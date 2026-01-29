@@ -4,8 +4,12 @@ Watch a trained JAX/PureJaxRL agent play HackMatrix in visual mode.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import jax
 import jax.numpy as jnp

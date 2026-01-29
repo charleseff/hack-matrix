@@ -15,7 +15,7 @@ repos:
       # Swift build (catches compile errors)
       - id: swift-build
         name: Swift Build
-        entry: swift build
+        entry: ./swift-build
         language: system
         pass_filenames: false
         files: \.(swift)$
@@ -23,7 +23,7 @@ repos:
       # Python tests (parallel)
       - id: pytest
         name: Python Tests
-        entry: bash -c 'cd python && source venv/bin/activate 2>/dev/null || source venv-arm64/bin/activate && pytest tests/ -n auto -q --tb=short'
+        entry: bash -c 'cd python && source venv-macos/bin/activate 2>/dev/null || source venv-linux/bin/activate && pytest tests/ -n auto -q --tb=short'
         language: system
         pass_filenames: false
         always_run: true

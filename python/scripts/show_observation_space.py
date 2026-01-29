@@ -3,6 +3,11 @@ Inspect observation space structure and verify all game state is captured.
 """
 
 import json
+import os
+import sys
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 

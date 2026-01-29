@@ -4,8 +4,12 @@ Watch a trained MaskablePPO agent play HackMatrix in visual mode.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sb3_contrib import MaskablePPO
 

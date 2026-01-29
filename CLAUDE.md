@@ -15,14 +15,16 @@
 ### Building
 
 **Hybrid build approach:**
-- **Training (headless)**: `swift build` → `.build/debug/HackMatrix`
+- **Training (headless)**: `./swift-build` → `.build-macos/debug/HackMatrix` or `.build-linux/debug/HackMatrix`
 - **GUI app**: `xcodebuild -scheme HackMatrix -configuration Debug build` → `DerivedData/.../HackMatrix.app`
 
-Python auto-selects the right binary based on mode.
+The `./swift-build` wrapper auto-detects platform and uses the correct build directory, preventing binary format conflicts between macOS and Linux.
+
+Python auto-selects the right binary based on platform.
 
 **Validation commands:**
 - Tests: `swift test`
-- Build (headless): `swift build`
+- Build (headless): `./swift-build`
 - Build (GUI): `xcodebuild -scheme HackMatrix -configuration Debug build`
 
 **Notes:**
@@ -48,7 +50,7 @@ python python/scripts/train.py
 claude
 
 # Rebuild Swift after code changes
-swift build -c release
+./swift-build
 ```
 
 **Environment:**
@@ -218,6 +220,9 @@ pytest python/tests/ -v
 
 ### Build Paths
 
-Python uses different binaries based on mode:
-- **Training** (headless): `.build/debug/HackMatrix` (SPM build)
-- **Visual mode** (GUI): `DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app` (Xcode build)
+Python auto-selects the correct binary based on platform:
+- **macOS** (headless): `.build-macos/debug/HackMatrix`
+- **Linux** (headless): `.build-linux/debug/HackMatrix`
+- **Visual mode** (GUI, macOS only): `DerivedData/HackMatrix/Build/Products/Debug/HackMatrix.app` (Xcode build)
+
+Use `./swift-build` to build for the current platform. Override with `HACKMATRIX_BINARY` env var if needed.

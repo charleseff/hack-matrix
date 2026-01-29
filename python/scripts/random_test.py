@@ -2,8 +2,12 @@
 Test script for the HackMatrix environment - takes random actions to verify functionality.
 """
 
+import os
 import sys
 import time
+
+# Add python directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 

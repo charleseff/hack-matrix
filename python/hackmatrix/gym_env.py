@@ -22,11 +22,32 @@ from .observation_utils import parse_observation
 
 # App paths relative to this file
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _get_default_app_path():
+    """Get the default app path based on environment and platform.
+
+    Priority:
+    1. HACKMATRIX_BINARY env var (explicit override)
+    2. Platform-specific build directory:
+       - Linux: .build-linux/debug/HackMatrix
+       - macOS: .build-macos/debug/HackMatrix
+
+    Use ./swift-build wrapper to build for the correct platform.
+    """
+    if "HACKMATRIX_BINARY" in os.environ:
+        return os.environ["HACKMATRIX_BINARY"]
+
+    if sys.platform == "linux":
+        build_dir = ".build-linux"
+    else:
+        build_dir = ".build-macos"
+
+    return os.path.join(_SCRIPT_DIR, "..", "..", build_dir, "debug", "HackMatrix")
+
+
 # SPM build - headless CLI only (for training)
-# Check HACKMATRIX_BINARY env var first (for Docker), then fall back to relative path
-_DEFAULT_APP_PATH = os.environ.get(
-    "HACKMATRIX_BINARY", os.path.join(_SCRIPT_DIR, "..", "..", ".build", "debug", "HackMatrix")
-)
+_DEFAULT_APP_PATH = _get_default_app_path()
 # Xcode build - full GUI app (for visual mode)
 _XCODE_APP_PATH = os.path.join(
     _SCRIPT_DIR,
