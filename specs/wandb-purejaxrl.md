@@ -1,6 +1,6 @@
 # Wandb Integration for PureJaxRL
 
-**Status:** Active
+**Status:** Complete
 
 ## Overview
 

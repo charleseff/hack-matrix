@@ -2,11 +2,11 @@
 
 Design documents and implementation specifications for HackMatrix. As part of studying this document you may inspect the specs in the index provided.
 
+**Repository:** https://github.com/charleseff/hack-matrix.git
+
 ## Current Focus
 
-**Active spec:** [wandb-purejaxrl.md](./wandb-purejaxrl.md) - Wandb integration for PureJaxRL training
-
-Create a new spec document when starting a major feature or architectural change.
+**Active spec:** [google-trc-training.md](./google-trc-training.md) - Train agent on Google TPU Research Cloud
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -14,7 +14,8 @@ Create a new spec document when starting a major feature or architectural change
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Active** | Wandb integration for PureJaxRL training on Colab/TRC |
+| [google-trc-training.md](./google-trc-training.md) | **Active** | Train agent on Google TPU Research Cloud |
+| [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training on Colab/TRC |
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [training-reference.md](./training-reference.md) | **Reference** | RL training commands, monitoring, and troubleshooting |
 | [jax-dummy-env.md](./jax-dummy-env.md) | **Complete** | Minimal JAX dummy environment for plug-and-play testing with Swift env |
