@@ -46,6 +46,7 @@ def init_runner_state(
     config: TrainConfig,
     env: HackMatrixGymnax,
     key: jax.Array,
+    start_step: int = 0,
 ) -> RunnerState:
     """Initialize runner state outside JIT boundary.
 
@@ -55,6 +56,7 @@ def init_runner_state(
         config: Training configuration
         env: Environment instance
         key: JAX random key
+        start_step: Initial update step (for resuming training)
 
     Returns:
         runner_state: Initialized RunnerState ready for training
@@ -92,7 +94,7 @@ def init_runner_state(
         env_state=env_states,
         obs=obs,
         key=key,
-        update_step=0,
+        update_step=start_step,
     )
 
 
@@ -638,6 +640,7 @@ def make_chunked_train(
     chunk_size: int | None = None,
     log_fn: Callable[[dict, int], None] | None = None,
     checkpoint_fn: Callable[[RunnerState, int], None] | None = None,
+    start_step: int = 0,
 ):
     """Create chunked training function with Python logging loop.
 
@@ -650,6 +653,7 @@ def make_chunked_train(
         chunk_size: Updates per chunk (default: config.log_interval)
         log_fn: Called after each chunk with (aggregated_metrics, update_step)
         checkpoint_fn: Called periodically with (runner_state, update_step)
+        start_step: Initial update step for resuming (offsets step counter)
 
     Returns:
         train_fn: Function(key) -> (final_state, all_metrics)
@@ -674,7 +678,7 @@ def make_chunked_train(
             all_metrics: Dictionary of metrics, each with shape (num_updates,)
         """
         # Initialize state OUTSIDE JIT
-        runner_state = init_runner_state(config, env, key)
+        runner_state = init_runner_state(config, env, key, start_step=start_step)
 
         # Calculate number of chunks
         num_updates = config.num_updates

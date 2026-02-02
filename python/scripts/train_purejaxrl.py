@@ -345,6 +345,8 @@ def main():
     else:
         # Use chunked training with real-time logging
         print("\nUsing chunked training (real-time logging enabled)")
+        if logger.resume_step > 0:
+            print(f"Resuming from update {logger.resume_step}")
 
         # Track last checkpoint step
         last_checkpoint_step = 0
@@ -371,6 +373,7 @@ def main():
             chunk_size=config.log_interval,
             log_fn=log_callback,
             checkpoint_fn=checkpoint_callback,
+            start_step=logger.resume_step,
         )
 
         print("Compiling training function (first chunk)...")

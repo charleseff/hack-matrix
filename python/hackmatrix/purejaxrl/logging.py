@@ -82,6 +82,7 @@ class TrainingLogger:
     _start_time: float = field(default=0.0, init=False)
     _last_log_time: float = field(default=0.0, init=False)
     _total_steps: int = field(default=0, init=False)
+    _resume_step: int = field(default=0, init=False)
 
     def __post_init__(self):
         self._start_time = time.time()
@@ -111,12 +112,35 @@ class TrainingLogger:
             if self._wandb_run and self.config:
                 print(f"WandB run initialized: {self._wandb_run.url}")
 
+            # Track resume step for continued logging
+            if self.resume_run and self._wandb_run:
+                self._resume_step = self._get_last_step()
+            else:
+                self._resume_step = 0
+
         except ImportError:
             print("Warning: wandb not installed, disabling wandb logging")
             self.use_wandb = False
         except Exception as e:
             print(f"Warning: wandb init failed ({e}), disabling wandb logging")
             self.use_wandb = False
+
+    def _get_last_step(self) -> int:
+        """Get the last logged step from a resumed wandb run."""
+        if not self._wandb_run:
+            return 0
+        try:
+            # Get the last step from the run's history
+            if hasattr(self._wandb_run, "summary") and "_step" in self._wandb_run.summary:
+                return int(self._wandb_run.summary["_step"])
+            return 0
+        except Exception:
+            return 0
+
+    @property
+    def resume_step(self) -> int:
+        """Get the step to resume from (0 if not resuming)."""
+        return self._resume_step
 
     def log_metrics(
         self,
