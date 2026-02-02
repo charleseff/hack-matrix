@@ -364,20 +364,24 @@ def main():
 
         # Check for checkpoint to resume from
         checkpoint_path = None
+        resume_from_checkpoint = False
         if args.resume_run:
             checkpoint_steps = get_checkpoint_steps(config.checkpoint_dir)
             if checkpoint_steps:
                 checkpoint_path = config.checkpoint_dir
+                resume_from_checkpoint = True
                 print(f"Found checkpoints at steps: {checkpoint_steps}")
                 print(f"Will resume from latest checkpoint (step {max(checkpoint_steps)})")
             else:
                 print(
                     f"Warning: --resume-run specified but no checkpoints found in {config.checkpoint_dir}"
                 )
-                print("Starting fresh training (wandb run will still be resumed)")
+                print("Starting fresh training (wandb metrics will also start fresh)")
 
         # Track last checkpoint (step or time based)
-        last_checkpoint_step = logger.resume_step if args.resume_run else 0
+        # Only use resume_step if we actually loaded a checkpoint
+        effective_start_step = logger.resume_step if resume_from_checkpoint else 0
+        last_checkpoint_step = effective_start_step
         last_checkpoint_time = time.time()
         use_time_based = args.save_interval is None
         save_interval_seconds = args.save_interval_minutes * 60
@@ -445,7 +449,7 @@ def main():
             chunk_size=config.log_interval,
             log_fn=log_callback,
             checkpoint_fn=checkpoint_callback,
-            start_step=logger.resume_step,
+            start_step=effective_start_step,
             checkpoint_path=checkpoint_path,
         )
 
