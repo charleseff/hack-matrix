@@ -57,6 +57,19 @@ claude
 - `HACKMATRIX_BINARY` - path to built executable
 - `VIRTUAL_ENV` - points to `python/venv-linux` (auto-activated)
 
+### Firewall (Dev Container)
+
+The dev container has an outbound firewall. If `WebFetch` returns `ECONNREFUSED`:
+
+1. **Temporary fix (this session):**
+   ```bash
+   for ip in $(dig +short example.com | grep -E '^[0-9]'); do
+       sudo ipset add allowed-domains "$ip"
+   done
+   ```
+
+2. **Permanent fix:** Add domain to `.devcontainer/init-firewall.sh` in the allowed domains list.
+
 ### Git Workflow
 
 - **Always create a new branch** for any non-trivial work

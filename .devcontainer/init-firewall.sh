@@ -77,7 +77,15 @@ for domain in \
     "files.pythonhosted.org" \
     "storage.googleapis.com" \
     "api.wandb.ai" \
-    "cdn.wandb.ai"; do
+    "cdn.wandb.ai" \
+    "packages.cloud.google.com" \
+    "oauth2.googleapis.com" \
+    "accounts.google.com" \
+    "www.googleapis.com" \
+    "compute.googleapis.com" \
+    "tpu.googleapis.com" \
+    "cloud.google.com" \
+    "docs.cloud.google.com"; do
     echo "Resolving $domain..."
     ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
     if [ -z "$ips" ]; then

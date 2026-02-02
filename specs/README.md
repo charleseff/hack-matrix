@@ -6,7 +6,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 ## Current Focus
 
-**Active spec:** [google-trc-training.md](./google-trc-training.md) - Train agent on Google TPU Research Cloud
+**Active spec:** [training-speedups.md](./training-speedups.md) - Optimize TPU training throughput (10x speedup target)
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -14,7 +14,8 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| [google-trc-training.md](./google-trc-training.md) | **Active** | Train agent on Google TPU Research Cloud |
+| [training-speedups.md](./training-speedups.md) | **Active** | Optimize TPU training throughput (10x speedup target) |
+| [google-trc-training.md](./google-trc-training.md) | **In Progress** | Train agent on Google TPU Research Cloud |
 | [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training on Colab/TRC |
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [training-reference.md](./training-reference.md) | **Reference** | RL training commands, monitoring, and troubleshooting |
