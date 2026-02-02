@@ -142,6 +142,10 @@ python3 scripts/train_purejaxrl.py \
 "
 ```
 
+**Checkpointing:** Saves every 10 minutes by default (`--save-interval-minutes 10`). Use `--save-interval N` to save every N updates instead.
+
+**Resuming:** Use `--resume-run <wandb-run-id>` to load the latest checkpoint and continue training. Works even with different `num_envs`/`num_steps` (model weights and optimizer state are independent of batch size).
+
 **Expected performance:**
 - Batch size: 2048 × 256 = 524,288 (16x baseline)
 - Throughput: ~15,000-30,000 steps/sec (10-15x baseline)

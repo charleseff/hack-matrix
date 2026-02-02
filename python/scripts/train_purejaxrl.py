@@ -23,6 +23,7 @@ Example TPU usage:
 
 import argparse
 import os
+import signal
 import sys
 import time
 
@@ -118,7 +119,18 @@ def parse_args():
     )
 
     # Checkpointing
-    parser.add_argument("--save-interval", type=int, default=1000, help="Save every N updates")
+    parser.add_argument(
+        "--save-interval",
+        type=int,
+        default=None,
+        help="Save every N updates (default: use --save-interval-minutes instead)",
+    )
+    parser.add_argument(
+        "--save-interval-minutes",
+        type=float,
+        default=10.0,
+        help="Save checkpoint every N minutes (default: 10). Ignored if --save-interval is set.",
+    )
     parser.add_argument(
         "--checkpoint-dir", type=str, default="checkpoints", help="Checkpoint directory"
     )
@@ -248,7 +260,7 @@ def main():
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         log_interval=args.log_interval,
-        save_interval=args.save_interval,
+        save_interval=args.save_interval if args.save_interval is not None else 1_000_000,
         checkpoint_dir=args.checkpoint_dir,
         seed=args.seed,
     )
@@ -364,17 +376,60 @@ def main():
                 )
                 print("Starting fresh training (wandb run will still be resumed)")
 
-        # Track last checkpoint step (start from resume step to avoid immediate re-save)
+        # Track last checkpoint (step or time based)
         last_checkpoint_step = logger.resume_step if args.resume_run else 0
+        last_checkpoint_time = time.time()
+        use_time_based = args.save_interval is None
+        save_interval_seconds = args.save_interval_minutes * 60
+
+        if use_time_based:
+            print(f"Checkpointing every {args.save_interval_minutes} minutes")
+        else:
+            print(f"Checkpointing every {args.save_interval} updates")
+
+        # Track latest state for save-on-interrupt
+        latest_state = {"runner_state": None, "step": 0}
+
+        def handle_interrupt(signum, frame):
+            """Save checkpoint on Ctrl+C."""
+            print("\n\nInterrupt received, saving checkpoint...")
+            if latest_state["runner_state"] is not None:
+                interrupted_path = os.path.join(config.checkpoint_dir, "interrupted_params.npz")
+                save_params_npz(latest_state["runner_state"].train_state.params, interrupted_path)
+                print(f"Saved interrupted checkpoint to {interrupted_path}")
+                # Also save full checkpoint for proper resume
+                save_checkpoint(
+                    latest_state["runner_state"].train_state,
+                    config.checkpoint_dir,
+                    latest_state["step"],
+                    logger=logger if not args.no_artifact else None,
+                )
+            else:
+                print("No state to save yet (training hasn't started)")
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, handle_interrupt)
 
         def log_callback(metrics: dict, step: int):
             """Callback for logging metrics after each chunk."""
             logger.log_metrics(metrics, step)
 
         def checkpoint_callback(runner_state, step: int):
-            """Callback for checkpointing (respects save_interval)."""
-            nonlocal last_checkpoint_step
-            if step - last_checkpoint_step >= config.save_interval:
+            """Callback for checkpointing (time-based or step-based)."""
+            nonlocal last_checkpoint_step, last_checkpoint_time
+
+            # Always update latest state for interrupt handler
+            latest_state["runner_state"] = runner_state
+            latest_state["step"] = step
+
+            should_save = False
+            if use_time_based:
+                elapsed = time.time() - last_checkpoint_time
+                should_save = elapsed >= save_interval_seconds
+            else:
+                should_save = step - last_checkpoint_step >= args.save_interval
+
+            if should_save:
                 save_checkpoint(
                     runner_state.train_state,
                     config.checkpoint_dir,
@@ -382,6 +437,7 @@ def main():
                     logger=logger if not args.no_artifact else None,
                 )
                 last_checkpoint_step = step
+                last_checkpoint_time = time.time()
 
         train_fn = make_chunked_train(
             config,
