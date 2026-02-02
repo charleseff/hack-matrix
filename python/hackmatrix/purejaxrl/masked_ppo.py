@@ -65,6 +65,7 @@ class Transition:
     - log_prob: Log probability of action under policy at time t
     - value: Value estimate at time t
     - action_mask: Valid action mask at time t (for consistent log_prob computation)
+    - episode_return: Total return for completed episode (0 if episode not done)
     """
 
     obs: jax.Array
@@ -74,6 +75,7 @@ class Transition:
     log_prob: jax.Array
     value: jax.Array
     action_mask: jax.Array
+    episode_return: jax.Array  # Completed episode return (0 if not done)
 
 
 def masked_categorical(logits: jax.Array, mask: jax.Array) -> MaskedCategorical:

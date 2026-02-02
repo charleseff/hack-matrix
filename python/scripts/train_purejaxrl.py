@@ -45,7 +45,11 @@ from hackmatrix.purejaxrl import (
     make_chunked_train,
     make_train,
 )
-from hackmatrix.purejaxrl.checkpointing import save_checkpoint, save_params_npz
+from hackmatrix.purejaxrl.checkpointing import (
+    get_checkpoint_steps,
+    save_checkpoint,
+    save_params_npz,
+)
 from hackmatrix.purejaxrl.config import auto_tune_for_device
 from hackmatrix.purejaxrl.logging import TrainingLogger, generate_run_name, print_config
 
@@ -110,7 +114,7 @@ def parse_args():
         "--resume-run",
         type=str,
         default=None,
-        help="WandB run ID to resume (for Colab disconnect recovery)",
+        help="WandB run ID to resume (loads checkpoint + continues wandb logging)",
     )
 
     # Checkpointing
@@ -345,11 +349,23 @@ def main():
     else:
         # Use chunked training with real-time logging
         print("\nUsing chunked training (real-time logging enabled)")
-        if logger.resume_step > 0:
-            print(f"Resuming from update {logger.resume_step}")
 
-        # Track last checkpoint step
-        last_checkpoint_step = 0
+        # Check for checkpoint to resume from
+        checkpoint_path = None
+        if args.resume_run:
+            checkpoint_steps = get_checkpoint_steps(config.checkpoint_dir)
+            if checkpoint_steps:
+                checkpoint_path = config.checkpoint_dir
+                print(f"Found checkpoints at steps: {checkpoint_steps}")
+                print(f"Will resume from latest checkpoint (step {max(checkpoint_steps)})")
+            else:
+                print(
+                    f"Warning: --resume-run specified but no checkpoints found in {config.checkpoint_dir}"
+                )
+                print("Starting fresh training (wandb run will still be resumed)")
+
+        # Track last checkpoint step (start from resume step to avoid immediate re-save)
+        last_checkpoint_step = logger.resume_step if args.resume_run else 0
 
         def log_callback(metrics: dict, step: int):
             """Callback for logging metrics after each chunk."""
@@ -374,6 +390,7 @@ def main():
             log_fn=log_callback,
             checkpoint_fn=checkpoint_callback,
             start_step=logger.resume_step,
+            checkpoint_path=checkpoint_path,
         )
 
         print("Compiling training function (first chunk)...")

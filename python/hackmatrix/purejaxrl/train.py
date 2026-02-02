@@ -35,6 +35,7 @@ class RunnerState(NamedTuple):
     obs: jax.Array
     key: jax.Array
     update_step: int
+    episode_returns: jax.Array  # Per-env accumulator for episode returns
 
 
 # ============================================================================
@@ -47,6 +48,7 @@ def init_runner_state(
     env: HackMatrixGymnax,
     key: jax.Array,
     start_step: int = 0,
+    checkpoint_path: str | None = None,
 ) -> RunnerState:
     """Initialize runner state outside JIT boundary.
 
@@ -57,6 +59,7 @@ def init_runner_state(
         env: Environment instance
         key: JAX random key
         start_step: Initial update step (for resuming training)
+        checkpoint_path: Optional path to checkpoint directory to resume from
 
     Returns:
         runner_state: Initialized RunnerState ready for training
@@ -82,6 +85,15 @@ def init_runner_state(
         tx=tx,
     )
 
+    # Load checkpoint if provided
+    if checkpoint_path is not None:
+        from .checkpointing import load_checkpoint
+
+        train_state, loaded_step, _ = load_checkpoint(checkpoint_path, train_state)
+        # Use loaded step as start_step (overrides parameter)
+        start_step = loaded_step
+        print(f"Resuming from step {start_step}")
+
     # Initialize environments (vectorized)
     key, *env_keys = jax.random.split(key, config.num_envs + 1)
     env_keys = jnp.array(env_keys)
@@ -89,12 +101,16 @@ def init_runner_state(
     reset_fn = jax.vmap(lambda k: env.reset(k, env.default_params))
     obs, env_states = reset_fn(env_keys)
 
+    # Initialize episode return accumulators (one per env)
+    episode_returns = jnp.zeros(config.num_envs)
+
     return RunnerState(
         train_state=train_state,
         env_state=env_states,
         obs=obs,
         key=key,
         update_step=start_step,
+        episode_returns=episode_returns,
     )
 
 
@@ -151,6 +167,9 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
         reset_fn = jax.vmap(lambda k: env.reset(k, env.default_params))
         obs, env_states = reset_fn(env_keys)
 
+        # Initialize episode return accumulators
+        episode_returns = jnp.zeros(config.num_envs)
+
         # Initial runner state
         runner_state = RunnerState(
             train_state=train_state,
@@ -158,19 +177,20 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
             obs=obs,
             key=key,
             update_step=0,
+            episode_returns=episode_returns,
         )
 
         # Training loop
         def _update_step(runner_state: RunnerState, _) -> tuple[RunnerState, dict]:
             """Single PPO update step."""
-            train_state, env_state, obs, key, update_step = runner_state
+            train_state, env_state, obs, key, update_step, episode_returns = runner_state
 
             # Collect rollout
             key, rollout_key = jax.random.split(key)
 
             def _env_step(carry, _):
                 """Single environment step."""
-                env_state, obs, key = carry
+                env_state, obs, key, ep_returns = carry
 
                 key, action_key, step_key = jax.random.split(key, 3)
 
@@ -198,6 +218,14 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
                     step_keys, env_state, actions
                 )
 
+                # Track episode returns
+                # Add reward to running total
+                new_ep_returns = ep_returns + rewards
+                # Record completed episode returns (will be 0 for non-done envs)
+                completed_returns = jnp.where(dones, new_ep_returns, 0.0)
+                # Reset accumulator for done envs
+                ep_returns = jnp.where(dones, 0.0, new_ep_returns)
+
                 # Handle episode resets
                 def handle_reset(done, next_s, next_o, k):
                     reset_obs, reset_state = env.reset(k, env.default_params)
@@ -218,14 +246,15 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
                     log_prob=log_probs,
                     value=values,
                     action_mask=action_masks,
+                    episode_return=completed_returns,
                 )
 
-                return (env_state, next_obs, key), transition
+                return (env_state, next_obs, key, ep_returns), transition
 
             # Collect num_steps transitions
-            (env_state, obs, key), transitions = jax.lax.scan(
+            (env_state, obs, key, episode_returns), transitions = jax.lax.scan(
                 _env_step,
-                (env_state, obs, rollout_key),
+                (env_state, obs, rollout_key, episode_returns),
                 None,
                 length=config.num_steps,
             )
@@ -257,6 +286,7 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
                 log_prob=flatten_batch(transitions.log_prob),
                 value=flatten_batch(transitions.value),
                 action_mask=flatten_batch(transitions.action_mask),
+                episode_return=flatten_batch(transitions.episode_return),
             )
             advantages_flat = flatten_batch(advantages)
             returns_flat = flatten_batch(returns)
@@ -339,12 +369,19 @@ def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
             done_count = transitions.done.sum()
             metrics["mean_episode_length"] = (~transitions.done).sum() / jnp.maximum(done_count, 1)
 
+            # Episode return metrics (only from completed episodes)
+            # Sum of all completed episode returns / number of completed episodes
+            total_episode_returns = transitions.episode_return.sum()
+            metrics["mean_episode_return"] = total_episode_returns / jnp.maximum(done_count, 1)
+            metrics["num_episodes"] = done_count
+
             new_runner_state = RunnerState(
                 train_state=train_state,
                 env_state=env_state,
                 obs=obs,
                 key=key,
                 update_step=update_step + 1,
+                episode_returns=episode_returns,
             )
 
             return new_runner_state, metrics
@@ -383,14 +420,14 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
 
     def _update_step(runner_state: RunnerState, _) -> tuple[RunnerState, dict]:
         """Single PPO update step."""
-        train_state, env_state, obs, key, update_step = runner_state
+        train_state, env_state, obs, key, update_step, episode_returns = runner_state
 
         # Collect rollout
         key, rollout_key = jax.random.split(key)
 
         def _env_step(carry, _):
             """Single environment step."""
-            env_state, obs, key = carry
+            env_state, obs, key, ep_returns = carry
 
             key, action_key, step_key = jax.random.split(key, 3)
 
@@ -416,6 +453,14 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             step_fn = jax.vmap(lambda k, s, a: env.step(k, s, a, env.default_params))
             next_obs, next_env_state, rewards, dones, infos = step_fn(step_keys, env_state, actions)
 
+            # Track episode returns
+            # Add reward to running total
+            new_ep_returns = ep_returns + rewards
+            # Record completed episode returns (will be 0 for non-done envs)
+            completed_returns = jnp.where(dones, new_ep_returns, 0.0)
+            # Reset accumulator for done envs
+            ep_returns = jnp.where(dones, 0.0, new_ep_returns)
+
             # Handle episode resets
             def handle_reset(done, next_s, next_o, k):
                 reset_obs, reset_state = env.reset(k, env.default_params)
@@ -436,14 +481,15 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
                 log_prob=log_probs,
                 value=values,
                 action_mask=action_masks,
+                episode_return=completed_returns,
             )
 
-            return (env_state, next_obs, key), transition
+            return (env_state, next_obs, key, ep_returns), transition
 
         # Collect num_steps transitions
-        (env_state, obs, key), transitions = jax.lax.scan(
+        (env_state, obs, key, episode_returns), transitions = jax.lax.scan(
             _env_step,
-            (env_state, obs, rollout_key),
+            (env_state, obs, rollout_key, episode_returns),
             None,
             length=config.num_steps,
         )
@@ -472,6 +518,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             log_prob=flatten_batch(transitions.log_prob),
             value=flatten_batch(transitions.value),
             action_mask=flatten_batch(transitions.action_mask),
+            episode_return=flatten_batch(transitions.episode_return),
         )
         advantages_flat = flatten_batch(advantages)
         returns_flat = flatten_batch(returns)
@@ -554,12 +601,19 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
         done_count = transitions.done.sum()
         metrics["mean_episode_length"] = (~transitions.done).sum() / jnp.maximum(done_count, 1)
 
+        # Episode return metrics (only from completed episodes)
+        # Sum of all completed episode returns / number of completed episodes
+        total_episode_returns = transitions.episode_return.sum()
+        metrics["mean_episode_return"] = total_episode_returns / jnp.maximum(done_count, 1)
+        metrics["num_episodes"] = done_count
+
         new_runner_state = RunnerState(
             train_state=train_state,
             env_state=env_state,
             obs=obs,
             key=key,
             update_step=update_step + 1,
+            episode_returns=episode_returns,
         )
 
         return new_runner_state, metrics
@@ -641,6 +695,7 @@ def make_chunked_train(
     log_fn: Callable[[dict, int], None] | None = None,
     checkpoint_fn: Callable[[RunnerState, int], None] | None = None,
     start_step: int = 0,
+    checkpoint_path: str | None = None,
 ):
     """Create chunked training function with Python logging loop.
 
@@ -654,6 +709,7 @@ def make_chunked_train(
         log_fn: Called after each chunk with (aggregated_metrics, update_step)
         checkpoint_fn: Called periodically with (runner_state, update_step)
         start_step: Initial update step for resuming (offsets step counter)
+        checkpoint_path: Optional path to checkpoint directory to resume from
 
     Returns:
         train_fn: Function(key) -> (final_state, all_metrics)
@@ -678,7 +734,9 @@ def make_chunked_train(
             all_metrics: Dictionary of metrics, each with shape (num_updates,)
         """
         # Initialize state OUTSIDE JIT
-        runner_state = init_runner_state(config, env, key, start_step=start_step)
+        runner_state = init_runner_state(
+            config, env, key, start_step=start_step, checkpoint_path=checkpoint_path
+        )
 
         # Calculate number of chunks
         num_updates = config.num_updates
