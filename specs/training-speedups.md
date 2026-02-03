@@ -28,7 +28,7 @@ Optimize PureJaxRL training throughput on TPU. Current baseline on v4-8 with def
 
 **Tradeoffs:**
 - More memory usage (should still fit on v4-8)
-- Larger batch size may need learning rate tuning
+- Larger batch size requires **keeping LR at 2.5e-4 or lower** (see [Learning Rate Findings](#learning-rate-findings))
 
 **Implementation:** CLI flag only, no code changes.
 
@@ -151,12 +151,41 @@ python3 scripts/train_purejaxrl.py \
 - Throughput: ~15,000-30,000 steps/sec (10-15x baseline)
 - 100M timesteps: ~1-2 hours (vs ~10 hours baseline)
 
+## Learning Rate Findings
+
+**TL;DR:** Use `--lr 2.5e-4` (default). Do NOT increase LR with larger batches.
+
+### Experiment Comparison
+
+| Run | LR | Final Reward | Entropy | KL | Clip Frac |
+|-----|-----|--------------|---------|-----|-----------|
+| [hackmatrix-jax-feb02-26-1](https://wandb.ai/charles-team/hackmatrix/runs/b0cf9e12) | **2.5e-4** | **-0.060** | **1.65** | 0.055 | 0.22 |
+| [hackmatrix-jax-feb03-26-2](https://wandb.ai/charles-team/hackmatrix/runs/401d3405) | 3e-4 | -0.088 | 1.30 | 0.10 | 0.40-0.45 |
+
+### Signs of LR Too High (3e-4 run)
+
+1. **High KL divergence (~0.10)**: Policy updates too aggressive. PPO target is 0.01-0.02.
+2. **High clip fraction (~0.40-0.45)**: Nearly half of updates clipped → wasted computation.
+3. **Low entropy (~1.3)**: Premature convergence, can't explore out of local minimum.
+4. **Oscillating reward**: No steady improvement, bounces around.
+
+### Why Lower LR Works Better
+
+With large batches (524k samples/update), gradients are less noisy. Each update has more impact, so smaller steps are needed. This is counterintuitive—common advice is "scale LR with batch size"—but PPO's clipping mechanism already limits update size, making additional LR scaling harmful.
+
+### Healthy Training Metrics (2.5e-4 run)
+
+- KL stable at 0.05-0.06
+- Clip fraction ~0.22 (acceptable)
+- Entropy *increases* over training (1.12 → 1.65) as agent learns confident exploration
+- Steady reward improvement (-0.10 → -0.06)
+
 ## Implementation Plan
 
 ### Phase 1: Quick Wins (No Code Changes)
-- [ ] Test `--num-envs 2048` alone
-- [ ] Test `--num-envs 2048 --num-steps 256` combined
-- [ ] Verify training stability with larger batch
+- [x] Test `--num-envs 2048` alone
+- [x] Test `--num-envs 2048 --num-steps 256` combined
+- [ ] Verify training stability with larger batch (see [Learning Rate Findings](#learning-rate-findings))
 - [ ] Benchmark throughput improvement
 - [ ] Update google-trc-training.md with fast config
 

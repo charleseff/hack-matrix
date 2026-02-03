@@ -209,13 +209,13 @@ def run_benchmark(config: TrainConfig, env: HackMatrixGymnax, key: jax.Array):
 
     # Warmup (compile) - chunked compiles on first run
     print("  Warmup (compiling)...")
-    warmup_state2, _ = train_chunked(key3)
+    warmup_state2, _, _ = train_chunked(key3)
     jax.tree.map(lambda x: x.block_until_ready(), warmup_state2.train_state)
 
     # Timed run
     print("  Timing chunked...")
     start = time.time()
-    state2, _ = train_chunked(key4)
+    state2, _, _ = train_chunked(key4)
     # Block until computation actually completes
     jax.tree.map(lambda x: x.block_until_ready(), state2.train_state)
     chunked_time = time.time() - start
@@ -393,6 +393,14 @@ def main():
             if os.path.exists(args.resume):
                 checkpoint_path = args.resume  # Pass the specific file path
                 resume_from_checkpoint = True
+                # Load last_logged_step from checkpoint to avoid wandb step conflicts
+                import pickle
+
+                with open(checkpoint_path, "rb") as f:
+                    ckpt = pickle.load(f)
+                    last_logged_step = ckpt.get("last_logged_step", ckpt["step"])
+                    logger.set_resume_step(last_logged_step)
+                    print(f"Setting wandb resume step to {last_logged_step} (from checkpoint)")
             else:
                 print(f"Warning: Checkpoint file not found: {args.resume}")
                 print("Starting fresh training")
@@ -426,6 +434,7 @@ def main():
                     run_checkpoint_dir,
                     latest_state["step"],
                     logger=logger if not args.no_artifact else None,
+                    last_logged_step=logger.last_logged_step,
                 )
             else:
                 print("No state to save yet (training hasn't started)")
@@ -458,6 +467,7 @@ def main():
                     run_checkpoint_dir,
                     step,
                     logger=logger if not args.no_artifact else None,
+                    last_logged_step=logger.last_logged_step,
                 )
                 last_checkpoint_step = step
                 last_checkpoint_time = time.time()
@@ -474,7 +484,7 @@ def main():
 
         print("Compiling training function (first chunk)...")
         start_time = time.time()
-        final_state, all_metrics = train_fn(key)
+        final_state, all_metrics, _ = train_fn(key)  # _ is last_logged_step (already used)
         total_time = time.time() - start_time
         print(f"\nTraining completed in {total_time:.1f}s")
 

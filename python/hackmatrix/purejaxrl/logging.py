@@ -83,6 +83,7 @@ class TrainingLogger:
     _last_log_time: float = field(default=0.0, init=False)
     _total_steps: int = field(default=0, init=False)
     _resume_step: int = field(default=0, init=False)
+    _last_logged_step: int = field(default=0, init=False)
 
     def __post_init__(self):
         self._start_time = time.time()
@@ -142,6 +143,18 @@ class TrainingLogger:
         """Get the step to resume from (0 if not resuming)."""
         return self._resume_step
 
+    @property
+    def last_logged_step(self) -> int:
+        """Get the last step that was logged to wandb."""
+        return self._last_logged_step
+
+    def set_resume_step(self, step: int):
+        """Set the resume step (e.g., from checkpoint's last_logged_step).
+
+        This ensures wandb logging skips steps that were already logged.
+        """
+        self._resume_step = max(self._resume_step, step)
+
     def log_metrics(
         self,
         metrics: dict[str, float],
@@ -165,14 +178,26 @@ class TrainingLogger:
         metric_strs = [f"{k}: {v:.4f}" for k, v in metrics.items()]
         print(f"[Update {step:6d}] [{elapsed:.1f}s] [{sps:.1f} updates/s] {', '.join(metric_strs)}")
 
-        # WandB logging
+        # WandB logging (skip if step is behind resume point to avoid conflicts)
         if self.use_wandb and self._wandb_run is not None:
-            import wandb
+            if step <= self._resume_step:
+                # Skip logging - wandb already has this step
+                pass
+            else:
+                import wandb
 
-            wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
-            wandb_metrics[f"{prefix}/updates_per_second"] = sps
-            wandb_metrics[f"{prefix}/update_step"] = step
-            wandb.log(wandb_metrics, step=step)
+                wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
+                wandb_metrics[f"{prefix}/updates_per_second"] = sps
+                wandb_metrics[f"{prefix}/update_step"] = step
+
+                # Duplicate key metrics to their own section for easy pinning
+                key_metrics = ["mean_reward", "mean_episode_return", "mean_episode_length"]
+                for k in key_metrics:
+                    if k in metrics:
+                        wandb_metrics[f"key/{k}"] = metrics[k]
+
+                wandb.log(wandb_metrics, step=step)
+                self._last_logged_step = step
 
         self._last_log_time = current_time
 

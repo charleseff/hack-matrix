@@ -78,6 +78,7 @@ for domain in \
     "storage.googleapis.com" \
     "api.wandb.ai" \
     "cdn.wandb.ai" \
+    "mcp.withwandb.com" \
     "packages.cloud.google.com" \
     "oauth2.googleapis.com" \
     "accounts.google.com" \

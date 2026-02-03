@@ -21,6 +21,7 @@ def save_checkpoint(
     step: int,
     metrics: dict[str, float] | None = None,
     logger: Any = None,
+    last_logged_step: int | None = None,
 ) -> str:
     """Save training checkpoint.
 
@@ -30,6 +31,7 @@ def save_checkpoint(
         step: Current training step
         metrics: Optional metrics to save with checkpoint
         logger: Optional TrainingLogger for wandb artifact upload
+        last_logged_step: Last step logged to wandb (for resume without conflicts)
 
     Returns:
         checkpoint_path: Path to saved checkpoint file
@@ -41,6 +43,7 @@ def save_checkpoint(
         "params": jax.device_get(train_state.params),
         "opt_state": jax.device_get(train_state.opt_state),
         "metrics": metrics or {},
+        "last_logged_step": last_logged_step or step,
     }
 
     checkpoint_path = os.path.join(path, f"checkpoint_{step}.pkl")
@@ -65,7 +68,7 @@ def load_checkpoint(
     path: str,
     train_state: TrainState,
     step: int | None = None,
-) -> tuple[TrainState, int, dict[str, float]]:
+) -> tuple[TrainState, int, dict[str, float], int]:
     """Load training checkpoint.
 
     Args:
@@ -78,6 +81,7 @@ def load_checkpoint(
         train_state: Restored training state
         step: Training step
         metrics: Saved metrics
+        last_logged_step: Last step logged to wandb (for resume without conflicts)
     """
     # Determine checkpoint file path
     if path.endswith(".pkl"):
@@ -103,8 +107,11 @@ def load_checkpoint(
         opt_state=checkpoint["opt_state"],
     )
 
+    # Get last_logged_step (for backwards compatibility with old checkpoints)
+    last_logged_step = checkpoint.get("last_logged_step", checkpoint["step"])
+
     print(f"Loaded checkpoint from {checkpoint_path}")
-    return train_state, checkpoint["step"], checkpoint["metrics"]
+    return train_state, checkpoint["step"], checkpoint["metrics"], last_logged_step
 
 
 def save_params_npz(params: dict[str, Any], path: str):

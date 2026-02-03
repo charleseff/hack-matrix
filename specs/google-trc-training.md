@@ -343,6 +343,18 @@ done
 ### Training killed mid-run
 Use tmux or nohup for long training runs (see Long-Running Training section).
 
+### SSH from dev container (REQUIRED flags)
+**Always use these flags** when running `gcloud compute tpus tpu-vm ssh` from the dev container:
+
+```bash
+gcloud compute tpus tpu-vm ssh hackmatrix-train --zone=us-central2-b \
+  --ssh-flag="-o BatchMode=yes" \
+  --ssh-flag="-o StrictHostKeyChecking=accept-new" \
+  --command "..."
+```
+
+Without these flags, SSH will hang or fail with exit code 255 due to interactive prompts in the containerized environment.
+
 ## References
 
 - [Google TRC Documentation](https://sites.research.google/trc/about/)

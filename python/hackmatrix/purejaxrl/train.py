@@ -49,7 +49,7 @@ def init_runner_state(
     key: jax.Array,
     start_step: int = 0,
     checkpoint_path: str | None = None,
-) -> RunnerState:
+) -> tuple["RunnerState", int]:
     """Initialize runner state outside JIT boundary.
 
     This enables passing state between Python and JAX for chunked training.
@@ -63,6 +63,7 @@ def init_runner_state(
 
     Returns:
         runner_state: Initialized RunnerState ready for training
+        last_logged_step: Last step logged to wandb (for resume without conflicts)
     """
     # Initialize network
     key, init_key = jax.random.split(key)
@@ -86,10 +87,13 @@ def init_runner_state(
     )
 
     # Load checkpoint if provided
+    last_logged_step = 0
     if checkpoint_path is not None:
         from .checkpointing import load_checkpoint
 
-        train_state, loaded_step, _ = load_checkpoint(checkpoint_path, train_state)
+        train_state, loaded_step, _, last_logged_step = load_checkpoint(
+            checkpoint_path, train_state
+        )
         # Use loaded step as start_step (overrides parameter)
         start_step = loaded_step
         print(f"Resuming from step {start_step}")
@@ -104,7 +108,7 @@ def init_runner_state(
     # Initialize episode return accumulators (one per env)
     episode_returns = jnp.zeros(config.num_envs)
 
-    return RunnerState(
+    runner_state = RunnerState(
         train_state=train_state,
         env_state=env_states,
         obs=obs,
@@ -112,6 +116,7 @@ def init_runner_state(
         update_step=start_step,
         episode_returns=episode_returns,
     )
+    return runner_state, last_logged_step
 
 
 def make_train(config: TrainConfig, env: HackMatrixGymnax = None):
@@ -723,7 +728,7 @@ def make_chunked_train(
     # Create the JIT-compiled chunk function
     train_chunk_fn = make_train_chunk(config, env, chunk_size)
 
-    def train(key: jax.Array) -> tuple[RunnerState, dict]:
+    def train(key: jax.Array) -> tuple[RunnerState, dict, int]:
         """Run training with logging between chunks.
 
         Args:
@@ -732,9 +737,10 @@ def make_chunked_train(
         Returns:
             final_state: Final RunnerState
             all_metrics: Dictionary of metrics, each with shape (num_updates,)
+            last_logged_step: Last step logged to wandb from checkpoint (for resume)
         """
         # Initialize state OUTSIDE JIT
-        runner_state = init_runner_state(
+        runner_state, last_logged_step = init_runner_state(
             config, env, key, start_step=start_step, checkpoint_path=checkpoint_path
         )
 
@@ -782,7 +788,7 @@ def make_chunked_train(
         # Concatenate all metrics
         all_metrics = concatenate_metrics(all_chunk_metrics)
 
-        return runner_state, all_metrics
+        return runner_state, all_metrics, last_logged_step
 
     return train
 
