@@ -142,9 +142,9 @@ python3 scripts/train_purejaxrl.py \
 "
 ```
 
-**Checkpointing:** Saves every 10 minutes by default (`--save-interval-minutes 10`). Use `--save-interval N` to save every N updates instead.
+**Checkpointing:** Saves every 10 minutes by default (`--save-interval-minutes 10`). Use `--save-interval N` to save every N updates instead. Checkpoints are stored in per-run directories: `checkpoints/{run_name}/checkpoint_{step}.pkl`.
 
-**Resuming:** Use `--resume-run <wandb-run-id>` to load the latest checkpoint and continue training. Works even with different `num_envs`/`num_steps` (model weights and optimizer state are independent of batch size).
+**Resuming:** Use `--resume <checkpoint-file>` to load a specific checkpoint and continue training. Example: `--resume checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl`. Works even with different `num_envs`/`num_steps` (model weights and optimizer state are independent of batch size).
 
 **Expected performance:**
 - Batch size: 2048 × 256 = 524,288 (16x baseline)

@@ -216,21 +216,25 @@ Final mean_reward: -0.077
 
 ## Checkpointing
 
+Checkpoints are stored in per-run directories: `checkpoints/{run_name}/checkpoint_{step}.pkl`
+
 | Checkpoint | Frequency | Purpose |
 |------------|-----------|---------|
-| Periodic | Every 5M timesteps | Recovery from disconnects |
+| Periodic | Every 10 minutes (default) | Recovery from disconnects |
 | Final | End of training | Best model for validation |
+| Interrupted | On Ctrl+C | Save-on-interrupt |
 
 Both saved as wandb artifacts. To resume from disconnect:
 
 ```bash
 python scripts/train_purejaxrl.py \
   --wandb \
-  --resume-run <run-id>
+  --resume checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl
 ```
 
 CLI flags:
-- `--save-interval 5000000` - Steps between periodic saves
+- `--save-interval-minutes 10` - Minutes between saves (default: 10)
+- `--save-interval N` - Save every N updates (overrides time-based)
 - `--no-artifact` - Disable wandb uploads (faster iteration)
 
 ## Speeding Up TPU Setup

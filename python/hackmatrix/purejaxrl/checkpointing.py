@@ -69,24 +69,31 @@ def load_checkpoint(
     """Load training checkpoint.
 
     Args:
-        path: Directory containing checkpoints
+        path: Either a checkpoint file path (e.g., 'checkpoints/run/checkpoint_40.pkl')
+              or a directory containing checkpoints
         train_state: Training state to restore into
-        step: Specific step to load (None = latest)
+        step: Specific step to load (only used if path is a directory, None = latest)
 
     Returns:
         train_state: Restored training state
         step: Training step
         metrics: Saved metrics
     """
-    if step is None:
-        # Find latest checkpoint
-        checkpoints = [f for f in os.listdir(path) if f.startswith("checkpoint_")]
-        if not checkpoints:
-            raise FileNotFoundError(f"No checkpoints found in {path}")
-        steps = [int(f.split("_")[1].split(".")[0]) for f in checkpoints]
-        step = max(steps)
+    # Determine checkpoint file path
+    if path.endswith(".pkl"):
+        # Direct file path provided
+        checkpoint_path = path
+    else:
+        # Directory provided - find checkpoint by step or latest
+        if step is None:
+            # Find latest checkpoint
+            checkpoints = [f for f in os.listdir(path) if f.startswith("checkpoint_")]
+            if not checkpoints:
+                raise FileNotFoundError(f"No checkpoints found in {path}")
+            steps = [int(f.split("_")[1].split(".")[0]) for f in checkpoints]
+            step = max(steps)
+        checkpoint_path = os.path.join(path, f"checkpoint_{step}.pkl")
 
-    checkpoint_path = os.path.join(path, f"checkpoint_{step}.pkl")
     with open(checkpoint_path, "rb") as f:
         checkpoint = pickle.load(f)
 

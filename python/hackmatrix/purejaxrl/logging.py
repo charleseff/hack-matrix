@@ -75,7 +75,7 @@ class TrainingLogger:
     entity: str | None = None
     run_name: str | None = None
     run_id: str | None = None
-    resume_run: str | None = None
+    resume_run: bool = False
     config: dict[str, Any] | None = None
     upload_artifacts: bool = True
     _wandb_run: Any = None
@@ -96,15 +96,15 @@ class TrainingLogger:
         try:
             import wandb
 
-            # Handle resume: use provided resume_run ID, or derived run_id
-            effective_id = self.resume_run or self.run_id
-            resume_mode = "allow" if effective_id else None
+            # Always use run_id for consistent wandb run identification
+            # resume="allow" creates if new, resumes if exists
+            resume_mode = "allow" if self.run_id else None
 
             self._wandb_run = wandb.init(
                 project=self.project_name,
                 entity=self.entity,
                 name=self.run_name,
-                id=effective_id,
+                id=self.run_id,
                 resume=resume_mode,
                 config=self.config,
             )

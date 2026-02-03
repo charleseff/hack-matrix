@@ -15,7 +15,7 @@ Usage:
     python scripts/train_purejaxrl.py
     python scripts/train_purejaxrl.py --num-envs 512 --total-timesteps 100000000
     python scripts/train_purejaxrl.py --wandb --project hackmatrix
-    python scripts/train_purejaxrl.py --wandb --resume-run abc123
+    python scripts/train_purejaxrl.py --wandb --resume
 
 Example TPU usage:
     python scripts/train_purejaxrl.py --num-envs 2048 --total-timesteps 1000000000
@@ -47,12 +47,16 @@ from hackmatrix.purejaxrl import (
     make_train,
 )
 from hackmatrix.purejaxrl.checkpointing import (
-    get_checkpoint_steps,
     save_checkpoint,
     save_params_npz,
 )
 from hackmatrix.purejaxrl.config import auto_tune_for_device
-from hackmatrix.purejaxrl.logging import TrainingLogger, generate_run_name, print_config
+from hackmatrix.purejaxrl.logging import TrainingLogger, print_config
+from hackmatrix.run_utils import (
+    derive_run_id,
+    generate_run_name,
+    get_run_name_from_checkpoint_dir,
+)
 
 
 def parse_args():
@@ -112,10 +116,10 @@ def parse_args():
         help="Optional suffix for auto-generated run name (e.g., 'test' -> hackmatrix-jax-jan25-26-1-test)",
     )
     parser.add_argument(
-        "--resume-run",
+        "--resume",
         type=str,
         default=None,
-        help="WandB run ID to resume (loads checkpoint + continues wandb logging)",
+        help="Path to checkpoint file to resume from (e.g., 'checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl')",
     )
 
     # Checkpointing
@@ -290,15 +294,35 @@ def main():
         run_benchmark(config, env, key)
         return
 
-    # Generate run name if not provided (for wandb)
-    run_name = args.run_name
-    run_id = args.resume_run  # Use resume_run as run_id if resuming
-    if args.wandb and run_name is None and not args.resume_run:
-        run_name, run_id = generate_run_name(
-            checkpoint_dir=config.checkpoint_dir,
-            run_suffix=args.run_suffix,
-        )
-        print(f"Generated run name: {run_name}")
+    # Determine run name and checkpoint directory
+    # Structure: checkpoint_dir/run_name/checkpoint_*.pkl
+    if args.resume:
+        # Extract run directory from checkpoint file path
+        # e.g., 'checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl' -> 'checkpoints/hackmatrix-jax-feb01-26-1'
+        run_checkpoint_dir = os.path.dirname(args.resume)
+        run_name = get_run_name_from_checkpoint_dir(run_checkpoint_dir)
+        if run_name:
+            print(f"Resuming run: {run_name}")
+            print(f"From checkpoint: {args.resume}")
+        else:
+            print(f"Warning: Could not extract run name from {args.resume}")
+            print("Using directory name as run name")
+            run_name = os.path.basename(os.path.normpath(run_checkpoint_dir))
+    else:
+        # New run - generate name or use provided
+        run_name = args.run_name
+        if run_name is None:
+            run_name = generate_run_name(
+                base_dir=config.checkpoint_dir,
+                prefix="hackmatrix-jax",
+                run_suffix=args.run_suffix,
+            )
+            print(f"Generated run name: {run_name}")
+        run_checkpoint_dir = os.path.join(config.checkpoint_dir, run_name)
+        os.makedirs(run_checkpoint_dir, exist_ok=True)
+
+    # Derive consistent run_id from run_name for wandb resume
+    run_id = derive_run_id(run_name) if run_name else None
 
     # Build wandb config dict
     wandb_config = {
@@ -331,7 +355,7 @@ def main():
         entity=args.entity,
         run_name=run_name,
         run_id=run_id,
-        resume_run=args.resume_run,
+        resume_run=bool(args.resume),  # Just indicate whether resuming, run_id handles the ID
         config=wandb_config,
         upload_artifacts=not args.no_artifact,
     )
@@ -365,18 +389,13 @@ def main():
         # Check for checkpoint to resume from
         checkpoint_path = None
         resume_from_checkpoint = False
-        if args.resume_run:
-            checkpoint_steps = get_checkpoint_steps(config.checkpoint_dir)
-            if checkpoint_steps:
-                checkpoint_path = config.checkpoint_dir
+        if args.resume:
+            if os.path.exists(args.resume):
+                checkpoint_path = args.resume  # Pass the specific file path
                 resume_from_checkpoint = True
-                print(f"Found checkpoints at steps: {checkpoint_steps}")
-                print(f"Will resume from latest checkpoint (step {max(checkpoint_steps)})")
             else:
-                print(
-                    f"Warning: --resume-run specified but no checkpoints found in {config.checkpoint_dir}"
-                )
-                print("Starting fresh training (wandb metrics will also start fresh)")
+                print(f"Warning: Checkpoint file not found: {args.resume}")
+                print("Starting fresh training")
 
         # Track last checkpoint (step or time based)
         # Only use resume_step if we actually loaded a checkpoint
@@ -398,13 +417,13 @@ def main():
             """Save checkpoint on Ctrl+C."""
             print("\n\nInterrupt received, saving checkpoint...")
             if latest_state["runner_state"] is not None:
-                interrupted_path = os.path.join(config.checkpoint_dir, "interrupted_params.npz")
+                interrupted_path = os.path.join(run_checkpoint_dir, "interrupted_params.npz")
                 save_params_npz(latest_state["runner_state"].train_state.params, interrupted_path)
                 print(f"Saved interrupted checkpoint to {interrupted_path}")
                 # Also save full checkpoint for proper resume
                 save_checkpoint(
                     latest_state["runner_state"].train_state,
-                    config.checkpoint_dir,
+                    run_checkpoint_dir,
                     latest_state["step"],
                     logger=logger if not args.no_artifact else None,
                 )
@@ -436,7 +455,7 @@ def main():
             if should_save:
                 save_checkpoint(
                     runner_state.train_state,
-                    config.checkpoint_dir,
+                    run_checkpoint_dir,
                     step,
                     logger=logger if not args.no_artifact else None,
                 )
@@ -471,8 +490,8 @@ def main():
                 print(f"  {key_name}: {float(val):.4f}")
 
     # Save final checkpoint
-    os.makedirs(config.checkpoint_dir, exist_ok=True)
-    final_params_path = os.path.join(config.checkpoint_dir, "final_params.npz")
+    os.makedirs(run_checkpoint_dir, exist_ok=True)
+    final_params_path = os.path.join(run_checkpoint_dir, "final_params.npz")
     save_params_npz(final_state.train_state.params, final_params_path)
 
     # Upload final checkpoint as artifact if enabled
