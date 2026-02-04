@@ -14,9 +14,8 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| [training-speedups.md](./training-speedups.md) | **Active** | Optimize TPU training throughput (10x speedup target) |
-| [google-trc-training.md](./google-trc-training.md) | **In Progress** | Train agent on Google TPU Research Cloud |
-| [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training on Colab/TRC |
+| [training-speedups.md](./training-speedups.md) | **Active** | TPU training on Google TRC (10x speedup target) |
+| [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training |
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [training-reference.md](./training-reference.md) | **Reference** | RL training commands, monitoring, and troubleshooting |
 | [jax-dummy-env.md](./jax-dummy-env.md) | **Complete** | Minimal JAX dummy environment for plug-and-play testing with Swift env |

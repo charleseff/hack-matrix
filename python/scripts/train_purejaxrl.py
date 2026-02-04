@@ -14,12 +14,14 @@ Features:
 Usage:
     python scripts/train_purejaxrl.py
     python scripts/train_purejaxrl.py --num-envs 512 --total-timesteps 100000000
-    python scripts/train_purejaxrl.py --wandb --project hackmatrix
-    python scripts/train_purejaxrl.py --wandb --resume
+    python scripts/train_purejaxrl.py --no-wandb  # disable wandb logging
+    python scripts/train_purejaxrl.py --resume checkpoints/run-name/checkpoint_100.pkl
 
 Example TPU usage:
     python scripts/train_purejaxrl.py --num-envs 2048 --total-timesteps 1000000000
 """
+
+# MARK: Imports
 
 import argparse
 import os
@@ -57,6 +59,9 @@ from hackmatrix.run_utils import (
     generate_run_name,
     get_run_name_from_checkpoint_dir,
 )
+
+
+# MARK: Argument Parsing
 
 
 def parse_args():
@@ -103,7 +108,7 @@ def parse_args():
 
     # Logging
     parser.add_argument("--log-interval", type=int, default=10, help="Log every N updates")
-    parser.add_argument("--wandb", action="store_true", help="Enable WandB logging")
+    parser.add_argument("--no-wandb", action="store_true", help="Disable WandB logging")
     parser.add_argument("--project", type=str, default="hackmatrix", help="WandB project name")
     parser.add_argument("--entity", type=str, default="charles-team", help="WandB entity/team")
     parser.add_argument(
@@ -157,6 +162,9 @@ def parse_args():
     )
 
     return parser.parse_args()
+
+
+# MARK: Benchmark
 
 
 def run_benchmark(config: TrainConfig, env: HackMatrixGymnax, key: jax.Array):
@@ -236,6 +244,9 @@ def run_benchmark(config: TrainConfig, env: HackMatrixGymnax, key: jax.Array):
 
     print("=" * 50)
     return overhead
+
+
+# MARK: Main
 
 
 def main():
@@ -350,7 +361,7 @@ def main():
 
     # Initialize logger
     logger = TrainingLogger(
-        use_wandb=args.wandb,
+        use_wandb=not args.no_wandb,
         project_name=args.project,
         entity=args.entity,
         run_name=run_name,
@@ -505,7 +516,7 @@ def main():
     save_params_npz(final_state.train_state.params, final_params_path)
 
     # Upload final checkpoint as artifact if enabled
-    if args.wandb and not args.no_artifact:
+    if not args.no_wandb and not args.no_artifact:
         logger.log_checkpoint_artifact(final_params_path, config.num_updates, "final-model")
 
     logger.finish()

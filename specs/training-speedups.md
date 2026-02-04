@@ -1,214 +1,141 @@
-# Training Speedups Spec
+# TPU Training Spec
 
 **Status:** Active
-**Depends on:** [google-trc-training.md](./google-trc-training.md)
 
 ## Overview
 
-Optimize PureJaxRL training throughput on TPU. Current baseline on v4-8 with default settings achieves ~1,800 timesteps/sec. Goal is 10-20x improvement.
+PureJaxRL training on Google TPU Research Cloud (TRC). Goal: 10x throughput improvement over baseline.
 
-## Current Baseline
+**TRC Details:**
+- Project: `hack-matrix` | Zone: `us-central2-b` | TPU: v4-8 (free under quota)
+- Trial ends: **February 28, 2026**
 
-| Setting | Value | Throughput |
-|---------|-------|------------|
-| num_envs | 256 | ~1,800 steps/sec |
-| num_steps | 128 | |
-| batch_size | 32,768 | |
-| 100M timesteps | ~10 hours | |
-
-## Proposed Changes
-
-### 1. Increase Parallel Environments (High Impact)
-
-**Change:** `num_envs` 256 → 2048
-
-**Expected speedup:** ~8x
-
-**Why it works:** TPU v4-8 has massive parallelism capacity. 256 envs underutilizes it. Each env runs independently, so 8x envs = 8x data collection throughput.
-
-**Tradeoffs:**
-- More memory usage (should still fit on v4-8)
-- Larger batch size requires **keeping LR at 2.5e-4 or lower** (see [Learning Rate Findings](#learning-rate-findings))
-
-**Implementation:** CLI flag only, no code changes.
+## Training Commands
 
 ```bash
---num-envs 2048
-```
-
-### 2. Longer Rollouts (Medium Impact)
-
-**Change:** `num_steps` 128 → 256
-
-**Expected speedup:** ~1.2x (better TPU utilization)
-
-**Expected learning benefit:** Moderate improvement in advantage estimation
-
-**What is a rollout?**
-A rollout is a sequence of (state, action, reward, next_state) transitions collected by running the policy. With `num_steps=128`, each environment collects 128 consecutive steps before a gradient update.
-
-**Why longer rollouts help:**
-1. **Better advantage estimation**: GAE looks at future rewards to estimate "was this action good?" Longer horizon = more accurate signal.
-2. **Complete episodes**: Short rollouts may cut episodes mid-game, biasing value estimates.
-3. **Longer-term credit assignment**: Agent can learn that actions many steps ago affected current reward.
-
-**Tradeoffs:**
-- More memory per rollout
-- Very long rollouts use "stale" policy (collected before gradient update)
-- For HackMatrix with ~20 step episodes, 256 is reasonable. Diminishing returns beyond.
-
-**Implementation:** CLI flag only.
-
-```bash
---num-steps 256
-```
-
-### 3. JAX Compilation Caching (One-time Savings)
-
-**Change:** Enable persistent JIT cache
-
-**Expected speedup:** Saves ~200s on each restart (not per-step improvement)
-
-**Implementation:** Environment variable.
-
-```bash
+# Fast config (recommended)
 export JAX_COMPILATION_CACHE_DIR=~/.jax_cache
-```
-
-### 4. Use Larger TPU (Potentially High Impact)
-
-**Current:** v4-8 (4 chips, 8 TensorCores)
-
-**Available under TRC quota:** Up to v4-64 (32 chips, 64 TensorCores)
-
-| API Name | Chips | TensorCores | Relative Compute |
-|----------|-------|-------------|------------------|
-| v4-8 | 4 | 8 | 1x (current) |
-| v4-16 | 8 | 16 | 2x |
-| v4-32 | 16 | 32 | 4x |
-| v4-64 | 32 | 64 | 8x (max quota) |
-
-**Expected speedup:** Potentially 2-8x more, but requires investigation.
-
-**Challenges:**
-- Multi-host training may need code changes (data parallelism across hosts)
-- JAX pmap/pjit configuration
-- May hit diminishing returns if bottlenecked elsewhere
-
-**Implementation:** Requires investigation. Create TPU with different accelerator-type:
-
-```bash
-gcloud compute tpus tpu-vm create hackmatrix-train \
-  --zone=us-central2-b \
-  --accelerator-type=v4-32 \  # or v4-64
-  --version=tpu-ubuntu2204-base
-```
-
-**Status:** Not yet tested. Start with v4-8 optimizations first.
-
-### 5. Mixed Precision / bfloat16 (Medium Impact)
-
-**Change:** Use bfloat16 for forward/backward pass, float32 for optimizer state
-
-**Expected speedup:** ~1.5-2x (TPU v4 optimized for bfloat16)
-
-**Implementation:** Code changes required in network and training loop.
-
-```python
-# Example (not yet implemented)
-import jax.numpy as jnp
-policy_dtype = jnp.bfloat16
-```
-
-**Status:** Not yet implemented. Lower priority than parallelism changes.
-
-## Recommended Fast Config
-
-Combining changes 1-3 (no code changes required):
-
-```bash
-gcloud compute tpus tpu-vm ssh hackmatrix-train --zone=us-central2-b --command="
-tmux new-session -d -s training '
-cd hack-matrix/python
-export PATH=\$HOME/.local/bin:\$PATH
-export JAX_COMPILATION_CACHE_DIR=~/.jax_cache
+cd ~/hack-matrix/python
 python3 scripts/train_purejaxrl.py \
   --wandb \
   --total-timesteps 100000000 \
   --num-envs 2048 \
   --num-steps 256 \
   --checkpoint-dir checkpoints
-'
-"
 ```
 
-**Checkpointing:** Saves every 10 minutes by default (`--save-interval-minutes 10`). Use `--save-interval N` to save every N updates instead. Checkpoints are stored in per-run directories: `checkpoints/{run_name}/checkpoint_{step}.pkl`.
+**Checkpointing:**
+- Saves every 10 minutes (override: `--save-interval-minutes N` or `--save-interval N` for update-based)
+- Location: `checkpoints/{run_name}/checkpoint_{step}.pkl`
+- Resume: `--resume checkpoints/run-name/checkpoint_40.pkl`
+- Disable wandb uploads: `--no-artifact`
 
-**Resuming:** Use `--resume <checkpoint-file>` to load a specific checkpoint and continue training. Example: `--resume checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl`. Works even with different `num_envs`/`num_steps` (model weights and optimizer state are independent of batch size).
+**Resume works across different `num_envs`/`num_steps`** (model weights are batch-size independent).
 
-**Expected performance:**
-- Batch size: 2048 × 256 = 524,288 (16x baseline)
-- Throughput: ~15,000-30,000 steps/sec (10-15x baseline)
-- 100M timesteps: ~1-2 hours (vs ~10 hours baseline)
+## Performance
+
+| Config | num_envs | num_steps | Batch Size | Throughput | 100M Time |
+|--------|----------|-----------|------------|------------|-----------|
+| Baseline | 256 | 128 | 32k | ~1,800/sec | ~10 hours |
+| **Fast** | 2048 | 256 | 524k | ~15-30k/sec | ~1-2 hours |
 
 ## Learning Rate Findings
 
-**TL;DR:** Use `--lr 2.5e-4` (default). Do NOT increase LR with larger batches.
-
-### Experiment Comparison
+**Use `--lr 2.5e-4` (default). Do NOT increase with larger batches.**
 
 | Run | LR | Final Reward | Entropy | KL | Clip Frac |
 |-----|-----|--------------|---------|-----|-----------|
-| [hackmatrix-jax-feb02-26-1](https://wandb.ai/charles-team/hackmatrix/runs/b0cf9e12) | **2.5e-4** | **-0.060** | **1.65** | 0.055 | 0.22 |
-| [hackmatrix-jax-feb03-26-2](https://wandb.ai/charles-team/hackmatrix/runs/401d3405) | 3e-4 | -0.088 | 1.30 | 0.10 | 0.40-0.45 |
+| [feb02-26-1](https://wandb.ai/charles-team/hackmatrix/runs/b0cf9e12) | **2.5e-4** | **-0.060** | **1.65** | 0.055 | 0.22 |
+| [feb03-26-2](https://wandb.ai/charles-team/hackmatrix/runs/401d3405) | 3e-4 | -0.088 | 1.30 | 0.10 | 0.40-0.45 |
 
-### Signs of LR Too High (3e-4 run)
+**Signs of LR too high:** KL > 0.08, clip fraction > 0.35, entropy collapse, oscillating reward.
 
-1. **High KL divergence (~0.10)**: Policy updates too aggressive. PPO target is 0.01-0.02.
-2. **High clip fraction (~0.40-0.45)**: Nearly half of updates clipped → wasted computation.
-3. **Low entropy (~1.3)**: Premature convergence, can't explore out of local minimum.
-4. **Oscillating reward**: No steady improvement, bounces around.
+**Why:** Large batches (524k) produce less noisy gradients. PPO clipping already limits update size—additional LR scaling is harmful.
 
-### Why Lower LR Works Better
+**Healthy metrics:** KL ~0.05-0.06, clip fraction ~0.22, entropy stable or increasing, steady reward improvement.
 
-With large batches (524k samples/update), gradients are less noisy. Each update has more impact, so smaller steps are needed. This is counterintuitive—common advice is "scale LR with batch size"—but PPO's clipping mechanism already limits update size, making additional LR scaling harmful.
+## Optimizations
 
-### Healthy Training Metrics (2.5e-4 run)
+### 1. Parallel Environments (High Impact)
+`--num-envs 2048` — TPU v4-8 underutilized at 256. 8x envs ≈ 8x throughput.
 
-- KL stable at 0.05-0.06
-- Clip fraction ~0.22 (acceptable)
-- Entropy *increases* over training (1.12 → 1.65) as agent learns confident exploration
-- Steady reward improvement (-0.10 → -0.06)
+### 2. Longer Rollouts (Medium Impact)
+`--num-steps 256` — Better advantage estimation, complete episodes. HackMatrix episodes ~20 steps, so 256 is reasonable.
+
+### 3. JAX Compilation Cache
+`export JAX_COMPILATION_CACHE_DIR=~/.jax_cache` — Saves ~200s on restart.
+
+### 4. Larger TPU (Not Yet Tested)
+
+| TPU | Chips | Relative Compute |
+|-----|-------|------------------|
+| v4-8 | 4 | 1x (current) |
+| v4-16 | 8 | 2x |
+| v4-32 | 16 | 4x |
+| v4-64 | 32 | 8x (max quota) |
+
+May need pmap/pjit changes for multi-host.
+
+### 5. bfloat16 (Not Implemented)
+~1.5-2x potential. Lower priority than parallelism.
+
+## Monitoring
+
+Wandb project: `hackmatrix`
+
+| Metric | Healthy Range | Problem Sign |
+|--------|---------------|--------------|
+| `mean_reward` | Trending up | Flat/oscillating |
+| `entropy` | Stable or increasing | Collapse to 0 |
+| `approx_kl` | 0.01-0.06 | > 0.08 |
+| `clip_fraction` | < 0.30 | > 0.40 |
+
+## Remote Access
+
+For running commands from local machine via gcloud:
+
+```bash
+# SSH with tmux for long runs
+gcloud compute tpus tpu-vm ssh hackmatrix-train --zone=us-central2-b --command="
+tmux new-session -d -s training 'cd ~/hack-matrix/python && python3 scripts/train_purejaxrl.py --wandb ...'
+"
+
+# Reattach
+gcloud compute tpus tpu-vm ssh hackmatrix-train --zone=us-central2-b
+tmux attach -t training
+
+# Download checkpoint
+gcloud compute tpus tpu-vm scp hackmatrix-train:~/hack-matrix/python/checkpoints/run/checkpoint.pkl \
+  ./checkpoints/ --zone=us-central2-b
+```
+
+## Visual Validation (macOS)
+
+```bash
+cd python && source venv-macos/bin/activate
+python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
+```
 
 ## Implementation Plan
 
-### Phase 1: Quick Wins (No Code Changes)
-- [x] Test `--num-envs 2048` alone
-- [x] Test `--num-envs 2048 --num-steps 256` combined
-- [ ] Verify training stability with larger batch (see [Learning Rate Findings](#learning-rate-findings))
+### Phase 1: Quick Wins
+- [x] Test `--num-envs 2048`
+- [x] Test `--num-envs 2048 --num-steps 256`
+- [ ] Verify training stability with larger batch
 - [ ] Benchmark throughput improvement
-- [ ] Update google-trc-training.md with fast config
 
-### Phase 2: Larger TPU Investigation
-- [ ] Test v4-16 creation with current code
-- [ ] Check if JAX auto-scales across chips
-- [ ] If not, investigate pmap/pjit changes
+### Phase 2: Larger TPU
+- [ ] Test v4-16 with current code
+- [ ] Check JAX auto-scaling across chips
 - [ ] Benchmark v4-16 vs v4-8
 
 ### Phase 3: Mixed Precision (Optional)
-- [ ] Implement bfloat16 policy/value networks
-- [ ] Verify training stability
-- [ ] Benchmark speedup
+- [ ] Implement bfloat16 networks
+- [ ] Verify stability and benchmark
 
 ## Success Criteria
 
-1. [ ] 10x throughput improvement (1,800 → 18,000+ steps/sec)
-2. [ ] 100M timesteps completes in < 2 hours
-3. [ ] Training stability maintained (no divergence, healthy entropy)
-4. [ ] Documented fast config in google-trc-training.md
-
-## References
-
-- [JAX Mixed Precision](https://jax.readthedocs.io/en/latest/jax-101/08-pjit.html)
-- [TPU Performance Guide](https://cloud.google.com/tpu/docs/performance-guide)
-- [PureJaxRL Scaling](https://github.com/luchris429/purejaxrl)
+- [ ] 10x throughput (1,800 → 18,000+ steps/sec)
+- [ ] 100M timesteps in < 2 hours
+- [ ] Training stability maintained
+- [ ] `watch_jax_agent.py` works with checkpoint
