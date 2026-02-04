@@ -15,7 +15,7 @@ from hackmatrix.jax_env import NUM_ACTIONS
 from hackmatrix.purejaxrl import (
     HackMatrixGymnax,
     TrainConfig,
-    make_train,
+    make_chunked_train,
     masked_categorical,
 )
 from hackmatrix.purejaxrl.env_wrapper import OBS_SIZE, GymnaxEnvState
@@ -192,7 +192,7 @@ class TestMaskedPPO:
 class TestTraining:
     """Test training loop components."""
 
-    def test_make_train_compiles(self):
+    def test_make_chunked_train_compiles(self):
         """Training function should compile without errors."""
         config = TrainConfig(
             num_envs=4,
@@ -205,7 +205,7 @@ class TestTraining:
         )
 
         env = HackMatrixGymnax()
-        train_fn = make_train(config, env)
+        train_fn = make_chunked_train(config, env)
 
         # Just check it compiles (don't run full training)
         assert callable(train_fn)
@@ -223,12 +223,12 @@ class TestTraining:
         )
 
         env = HackMatrixGymnax()
-        train_fn = make_train(config, env)
+        train_fn = make_chunked_train(config, env)
 
         key = jax.random.PRNGKey(0)
 
         # Run training (very short)
-        final_state, metrics = train_fn(key)
+        final_state, metrics, _ = train_fn(key)
 
         # Check we got output
         assert final_state is not None

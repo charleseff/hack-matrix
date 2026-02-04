@@ -9,7 +9,6 @@ Features:
 - Chunked training loop for real-time WandB logging
 - Auto-generated run names with resume support
 - Checkpoint artifacts upload to WandB
-- Performance benchmarking mode
 
 Usage:
     python scripts/train_purejaxrl.py
@@ -46,7 +45,6 @@ from hackmatrix.purejaxrl import (
     TrainConfig,
     get_device_config,
     make_chunked_train,
-    make_train,
 )
 from hackmatrix.purejaxrl.checkpointing import (
     save_checkpoint,
@@ -150,100 +148,8 @@ def parse_args():
     # Misc
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--auto-tune", action="store_true", help="Auto-tune config for device")
-    parser.add_argument(
-        "--benchmark",
-        action="store_true",
-        help="Run performance benchmark (compare wandb vs no-wandb overhead)",
-    )
-    parser.add_argument(
-        "--monolithic",
-        action="store_true",
-        help="Use monolithic training loop (no real-time logging, for comparison)",
-    )
 
     return parser.parse_args()
-
-
-# MARK: Benchmark
-
-
-def run_benchmark(config: TrainConfig, env: HackMatrixGymnax, key: jax.Array):
-    """Run performance benchmark comparing monolithic vs chunked training.
-
-    Args:
-        config: Training configuration
-        env: Environment instance
-        key: JAX random key
-
-    Returns:
-        overhead_percent: Percentage overhead of chunked vs monolithic
-    """
-    print("\n" + "=" * 50)
-    print("Performance Benchmark")
-    print("=" * 50)
-
-    # Use fewer updates for benchmark (100 updates = ~10 chunks of 10)
-    benchmark_config = TrainConfig(
-        **{**config.__dict__, "total_timesteps": config.batch_size * 100}
-    )
-    print(f"Benchmark config: {benchmark_config.num_updates} updates")
-
-    # Monolithic timing
-    print("\nRunning monolithic training...")
-    train_mono = make_train(benchmark_config, env)
-    key1, key2, key3, key4 = jax.random.split(key, 4)
-
-    # Warmup (compile) - block until complete
-    print("  Warmup (compiling)...")
-    warmup_state, _ = train_mono(key1)
-    jax.tree.map(lambda x: x.block_until_ready(), warmup_state)
-
-    # Timed run with fresh key
-    print("  Timing monolithic...")
-    start = time.time()
-    state, _ = train_mono(key2)
-    # Block until computation actually completes
-    jax.tree.map(lambda x: x.block_until_ready(), state)
-    mono_time = time.time() - start
-    print(f"  Monolithic: {mono_time:.2f}s")
-
-    # Chunked timing (with dummy log_fn to simulate overhead)
-    print("\nRunning chunked training...")
-
-    def dummy_log(metrics, step):
-        pass  # Just the callback overhead
-
-    train_chunked = make_chunked_train(benchmark_config, env, log_fn=dummy_log)
-
-    # Warmup (compile) - chunked compiles on first run
-    print("  Warmup (compiling)...")
-    warmup_state2, _, _ = train_chunked(key3)
-    jax.tree.map(lambda x: x.block_until_ready(), warmup_state2.train_state)
-
-    # Timed run
-    print("  Timing chunked...")
-    start = time.time()
-    state2, _, _ = train_chunked(key4)
-    # Block until computation actually completes
-    jax.tree.map(lambda x: x.block_until_ready(), state2.train_state)
-    chunked_time = time.time() - start
-    print(f"  Chunked: {chunked_time:.2f}s")
-
-    # Calculate overhead
-    if mono_time > 0.01:  # Avoid division by near-zero
-        overhead = (chunked_time - mono_time) / mono_time * 100
-        print(f"\nOverhead: {overhead:.2f}%")
-
-        if overhead < 5.0:  # Relaxed from 1% since CPU has more overhead
-            print("PASS: Overhead acceptable")
-        else:
-            print("Note: Some overhead expected on CPU. GPU/TPU should be <1%")
-    else:
-        print("\nMonolithic time too short for accurate measurement")
-        overhead = 0
-
-    print("=" * 50)
-    return overhead
 
 
 # MARK: Main
@@ -299,11 +205,6 @@ def main():
     # Create environment
     env = HackMatrixGymnax()
     key = jax.random.PRNGKey(args.seed)
-
-    # Run benchmark if requested
-    if args.benchmark:
-        run_benchmark(config, env, key)
-        return
 
     # Determine run name and checkpoint directory
     # Structure: checkpoint_dir/run_name/checkpoint_*.pkl
@@ -371,133 +272,107 @@ def main():
         upload_artifacts=not args.no_artifact,
     )
 
-    # Choose training mode
-    if args.monolithic:
-        # Use original monolithic training (no real-time logging)
-        print("\nUsing monolithic training (no real-time logging)")
-        train_fn = make_train(config, env)
+    # Check for checkpoint to resume from
+    checkpoint_path = None
+    resume_from_checkpoint = False
+    if args.resume:
+        if os.path.exists(args.resume):
+            checkpoint_path = args.resume  # Pass the specific file path
+            resume_from_checkpoint = True
+            # Load last_logged_step from checkpoint to avoid wandb step conflicts
+            import pickle
 
-        print("Compiling training function...")
-        start_compile = time.time()
-        final_state, all_metrics = train_fn(key)
-        compile_time = time.time() - start_compile
-        print(f"Compilation + training completed in {compile_time:.1f}s")
-
-        # Log final metrics only
-        final_metrics = {
-            "total_loss": float(all_metrics["total_loss"][-1]),
-            "pg_loss": float(all_metrics["pg_loss"][-1]),
-            "vf_loss": float(all_metrics["vf_loss"][-1]),
-            "entropy": float(all_metrics["entropy"][-1]),
-            "mean_reward": float(all_metrics["mean_reward"][-1]),
-        }
-        logger.log_metrics(final_metrics, config.num_updates)
-
-    else:
-        # Use chunked training with real-time logging
-        print("\nUsing chunked training (real-time logging enabled)")
-
-        # Check for checkpoint to resume from
-        checkpoint_path = None
-        resume_from_checkpoint = False
-        if args.resume:
-            if os.path.exists(args.resume):
-                checkpoint_path = args.resume  # Pass the specific file path
-                resume_from_checkpoint = True
-                # Load last_logged_step from checkpoint to avoid wandb step conflicts
-                import pickle
-
-                with open(checkpoint_path, "rb") as f:
-                    ckpt = pickle.load(f)
-                    last_logged_step = ckpt.get("last_logged_step", ckpt["step"])
-                    logger.set_resume_step(last_logged_step)
-                    print(f"Setting wandb resume step to {last_logged_step} (from checkpoint)")
-            else:
-                print(f"Warning: Checkpoint file not found: {args.resume}")
-                print("Starting fresh training")
-
-        # Track last checkpoint (step or time based)
-        # Only use resume_step if we actually loaded a checkpoint
-        effective_start_step = logger.resume_step if resume_from_checkpoint else 0
-        last_checkpoint_step = effective_start_step
-        last_checkpoint_time = time.time()
-        use_time_based = args.save_interval is None
-        save_interval_seconds = args.save_interval_minutes * 60
-
-        if use_time_based:
-            print(f"Checkpointing every {args.save_interval_minutes} minutes")
+            with open(checkpoint_path, "rb") as f:
+                ckpt = pickle.load(f)
+                last_logged_step = ckpt.get("last_logged_step", ckpt["step"])
+                logger.set_resume_step(last_logged_step)
+                print(f"Setting wandb resume step to {last_logged_step} (from checkpoint)")
         else:
-            print(f"Checkpointing every {args.save_interval} updates")
+            print(f"Warning: Checkpoint file not found: {args.resume}")
+            print("Starting fresh training")
 
-        # Track latest state for save-on-interrupt
-        latest_state = {"runner_state": None, "step": 0}
+    # Track last checkpoint (step or time based)
+    # Only use resume_step if we actually loaded a checkpoint
+    effective_start_step = logger.resume_step if resume_from_checkpoint else 0
+    last_checkpoint_step = effective_start_step
+    last_checkpoint_time = time.time()
+    use_time_based = args.save_interval is None
+    save_interval_seconds = args.save_interval_minutes * 60
 
-        def handle_interrupt(signum, frame):
-            """Save checkpoint on Ctrl+C."""
-            print("\n\nInterrupt received, saving checkpoint...")
-            if latest_state["runner_state"] is not None:
-                interrupted_path = os.path.join(run_checkpoint_dir, "interrupted_params.npz")
-                save_params_npz(latest_state["runner_state"].train_state.params, interrupted_path)
-                print(f"Saved interrupted checkpoint to {interrupted_path}")
-                # Also save full checkpoint for proper resume
-                save_checkpoint(
-                    latest_state["runner_state"].train_state,
-                    run_checkpoint_dir,
-                    latest_state["step"],
-                    logger=logger if not args.no_artifact else None,
-                    last_logged_step=logger.last_logged_step,
-                )
-            else:
-                print("No state to save yet (training hasn't started)")
-            sys.exit(0)
+    if use_time_based:
+        print(f"Checkpointing every {args.save_interval_minutes} minutes")
+    else:
+        print(f"Checkpointing every {args.save_interval} updates")
 
-        signal.signal(signal.SIGINT, handle_interrupt)
+    # Track latest state for save-on-interrupt
+    latest_state = {"runner_state": None, "step": 0}
 
-        def log_callback(metrics: dict, step: int):
-            """Callback for logging metrics after each chunk."""
-            logger.log_metrics(metrics, step)
+    def handle_interrupt(signum, frame):
+        """Save checkpoint on Ctrl+C."""
+        print("\n\nInterrupt received, saving checkpoint...")
+        if latest_state["runner_state"] is not None:
+            interrupted_path = os.path.join(run_checkpoint_dir, "interrupted_params.npz")
+            save_params_npz(latest_state["runner_state"].train_state.params, interrupted_path)
+            print(f"Saved interrupted checkpoint to {interrupted_path}")
+            # Also save full checkpoint for proper resume
+            save_checkpoint(
+                latest_state["runner_state"].train_state,
+                run_checkpoint_dir,
+                latest_state["step"],
+                logger=logger if not args.no_artifact else None,
+                last_logged_step=logger.last_logged_step,
+            )
+        else:
+            print("No state to save yet (training hasn't started)")
+        sys.exit(0)
 
-        def checkpoint_callback(runner_state, step: int):
-            """Callback for checkpointing (time-based or step-based)."""
-            nonlocal last_checkpoint_step, last_checkpoint_time
+    signal.signal(signal.SIGINT, handle_interrupt)
 
-            # Always update latest state for interrupt handler
-            latest_state["runner_state"] = runner_state
-            latest_state["step"] = step
+    def log_callback(metrics: dict, step: int):
+        """Callback for logging metrics after each chunk."""
+        logger.log_metrics(metrics, step)
 
-            should_save = False
-            if use_time_based:
-                elapsed = time.time() - last_checkpoint_time
-                should_save = elapsed >= save_interval_seconds
-            else:
-                should_save = step - last_checkpoint_step >= args.save_interval
+    def checkpoint_callback(runner_state, step: int):
+        """Callback for checkpointing (time-based or step-based)."""
+        nonlocal last_checkpoint_step, last_checkpoint_time
 
-            if should_save:
-                save_checkpoint(
-                    runner_state.train_state,
-                    run_checkpoint_dir,
-                    step,
-                    logger=logger if not args.no_artifact else None,
-                    last_logged_step=logger.last_logged_step,
-                )
-                last_checkpoint_step = step
-                last_checkpoint_time = time.time()
+        # Always update latest state for interrupt handler
+        latest_state["runner_state"] = runner_state
+        latest_state["step"] = step
 
-        train_fn = make_chunked_train(
-            config,
-            env,
-            chunk_size=config.log_interval,
-            log_fn=log_callback,
-            checkpoint_fn=checkpoint_callback,
-            start_step=effective_start_step,
-            checkpoint_path=checkpoint_path,
-        )
+        should_save = False
+        if use_time_based:
+            elapsed = time.time() - last_checkpoint_time
+            should_save = elapsed >= save_interval_seconds
+        else:
+            should_save = step - last_checkpoint_step >= args.save_interval
 
-        print("Compiling training function (first chunk)...")
-        start_time = time.time()
-        final_state, all_metrics, _ = train_fn(key)  # _ is last_logged_step (already used)
-        total_time = time.time() - start_time
-        print(f"\nTraining completed in {total_time:.1f}s")
+        if should_save:
+            save_checkpoint(
+                runner_state.train_state,
+                run_checkpoint_dir,
+                step,
+                logger=logger if not args.no_artifact else None,
+                last_logged_step=logger.last_logged_step,
+            )
+            last_checkpoint_step = step
+            last_checkpoint_time = time.time()
+
+    train_fn = make_chunked_train(
+        config,
+        env,
+        chunk_size=config.log_interval,
+        log_fn=log_callback,
+        checkpoint_fn=checkpoint_callback,
+        start_step=effective_start_step,
+        checkpoint_path=checkpoint_path,
+    )
+
+    print("Compiling training function (first chunk)...")
+    start_time = time.time()
+    final_state, all_metrics, _ = train_fn(key)  # _ is last_logged_step (already used)
+    total_time = time.time() - start_time
+    print(f"\nTraining completed in {total_time:.1f}s")
 
     # Print final metrics
     total_steps = config.num_updates * config.batch_size

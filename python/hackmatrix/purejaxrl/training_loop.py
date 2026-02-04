@@ -7,7 +7,7 @@ This module provides training functions:
 - init_runner_state() - Initialize training state outside JIT boundary
 """
 
-# MARK: Imports
+# MARK: - Imports
 
 from collections.abc import Callable
 from typing import NamedTuple
@@ -28,7 +28,7 @@ from .masked_ppo import (
 )
 
 
-# MARK: Types
+# MARK: - Types
 
 
 class RunnerState(NamedTuple):
@@ -42,7 +42,7 @@ class RunnerState(NamedTuple):
     episode_returns: jax.Array  # Per-env accumulator for episode returns
 
 
-# MARK: Initialization
+# MARK: - Initialization
 
 
 def init_runner_state(
@@ -121,7 +121,7 @@ def init_runner_state(
     return runner_state, last_logged_step
 
 
-# MARK: Chunked Training
+# MARK: - PPO Update Step
 
 
 def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
@@ -142,7 +142,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
         """Single PPO update step."""
         train_state, env_state, obs, key, update_step, episode_returns = runner_state
 
-        # Collect rollout
+        # MARK: Rollout Collection
         key, rollout_key = jax.random.split(key)
 
         def _env_step(carry, _):
@@ -214,7 +214,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             length=config.num_steps,
         )
 
-        # Compute advantages
+        # MARK: GAE Computation
         _, last_values = train_state.apply_fn(train_state.params, obs)
         values = jnp.concatenate([transitions.value, last_values[None]], axis=0)
 
@@ -226,7 +226,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             gae_lambda=config.gae_lambda,
         )
 
-        # Flatten batch for PPO updates
+        # MARK: Batch Preparation
         def flatten_batch(x):
             return x.reshape(-1, *x.shape[2:]) if x.ndim > 2 else x.reshape(-1)
 
@@ -243,7 +243,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
         advantages_flat = flatten_batch(advantages)
         returns_flat = flatten_batch(returns)
 
-        # PPO update epochs
+        # MARK: PPO Epochs
         key, ppo_key = jax.random.split(key)
 
         def _ppo_epoch(carry, _):
@@ -313,7 +313,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             length=config.update_epochs,
         )
 
-        # Average metrics across epochs and minibatches
+        # MARK: Metrics Aggregation
         metrics = jax.tree.map(lambda x: x.mean(), epoch_metrics)
 
         # Add rollout info
@@ -339,6 +339,9 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
         return new_runner_state, metrics
 
     return _update_step
+
+
+# MARK: - JIT Chunk Factory
 
 
 def make_train_chunk(
@@ -380,6 +383,9 @@ def make_train_chunk(
     return jax.jit(train_chunk)
 
 
+# MARK: - Metric Utilities
+
+
 def aggregate_chunk_metrics(chunk_metrics: dict) -> dict:
     """Aggregate metrics across a chunk for logging.
 
@@ -406,6 +412,9 @@ def concatenate_metrics(chunks: list[dict]) -> dict:
 
     keys = chunks[0].keys()
     return {k: jnp.concatenate([c[k] for c in chunks], axis=0) for k in keys}
+
+
+# MARK: - Training Loop
 
 
 def make_chunked_train(
@@ -508,7 +517,7 @@ def make_chunked_train(
     return train
 
 
-# MARK: Evaluation
+# MARK: - Evaluation
 
 
 def evaluate(
