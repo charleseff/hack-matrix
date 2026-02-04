@@ -50,7 +50,7 @@ from hackmatrix.purejaxrl.checkpointing import (
     save_checkpoint,
     save_params_npz,
 )
-from hackmatrix.purejaxrl.config import auto_tune_for_device
+from hackmatrix.purejaxrl.config import auto_scale_for_batch_size, auto_tune_for_device
 from hackmatrix.purejaxrl.logging import TrainingLogger, print_config
 from hackmatrix.run_utils import (
     derive_run_id,
@@ -190,6 +190,12 @@ def main():
         checkpoint_dir=args.checkpoint_dir,
         seed=args.seed,
     )
+
+    # Auto-scale num_minibatches for large batch sizes
+    # This maintains consistent minibatch_size (and gradient noise) regardless of num_envs
+    # Skip if user explicitly set num_minibatches to a non-default value
+    if args.num_minibatches == 4:  # Only auto-scale if using default
+        config = auto_scale_for_batch_size(config)
 
     # Auto-tune for device if requested
     if args.auto_tune:

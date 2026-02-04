@@ -273,5 +273,239 @@ class TestActionMaskingIntegration:
                 obs, state = env.reset(reset_key)
 
 
+class TestMathematicalCorrectness:
+    """Mathematical verification tests - these catch algorithm bugs."""
+
+    def test_gae_single_step_no_discount(self):
+        """GAE with gamma=0 should equal immediate TD error."""
+        # With gamma=0, advantage = r - V(s) (no future value)
+        rewards = jnp.array([[1.0]])  # (1 step, 1 env)
+        values = jnp.array([[0.5], [0.8]])  # V(s)=0.5, V(s')=0.8 (unused with gamma=0)
+        dones = jnp.array([[0.0]])
+
+        advantages, returns = compute_gae(rewards, values, dones, gamma=0.0, gae_lambda=0.95)
+
+        # With gamma=0: delta = r + 0*V(s') - V(s) = 1.0 - 0.5 = 0.5
+        expected_advantage = 1.0 - 0.5
+        assert jnp.allclose(advantages[0, 0], expected_advantage, atol=1e-5)
+
+    def test_gae_handles_episode_boundary(self):
+        """GAE should not bootstrap through done=True."""
+        rewards = jnp.array([[1.0], [1.0]])  # 2 steps
+        values = jnp.array([[0.0], [0.0], [100.0]])  # Bootstrap value is huge
+        dones = jnp.array([[1.0], [0.0]])  # Episode ends at step 0
+
+        advantages, _ = compute_gae(rewards, values, dones, gamma=0.99, gae_lambda=0.95)
+
+        # Step 0: done=True, so advantage = r - V(s) = 1.0 - 0.0 = 1.0
+        # (should NOT include gamma * V(s') because done)
+        assert jnp.allclose(advantages[0, 0], 1.0, atol=1e-5)
+
+    def test_gae_multi_step_known_values(self):
+        """GAE with known trajectory should match hand computation."""
+        # Simple 3-step trajectory: r=[1,2,3], V=[0,0,0,0], no termination
+        rewards = jnp.array([[1.0], [2.0], [3.0]])
+        values = jnp.array([[0.0], [0.0], [0.0], [0.0]])
+        dones = jnp.array([[0.0], [0.0], [0.0]])
+        gamma, lam = 0.9, 0.8
+
+        advantages, _ = compute_gae(rewards, values, dones, gamma=gamma, gae_lambda=lam)
+
+        # Hand-compute GAE backwards:
+        # t=2: delta_2 = 3 + 0.9*0 - 0 = 3, A_2 = 3
+        # t=1: delta_1 = 2 + 0.9*0 - 0 = 2, A_1 = 2 + 0.9*0.8*3 = 2 + 2.16 = 4.16
+        # t=0: delta_0 = 1 + 0.9*0 - 0 = 1, A_0 = 1 + 0.9*0.8*4.16 = 1 + 2.9952 = 3.9952
+        expected = jnp.array([[3.9952], [4.16], [3.0]])
+        assert jnp.allclose(advantages, expected, atol=1e-3)
+
+    def test_ppo_clipping_behavior(self):
+        """PPO clipping should bound the ratio's effect on loss."""
+        key = jax.random.PRNGKey(0)
+        network, params = init_network(key, obs_shape=(OBS_SIZE,), hidden_dim=32, num_layers=1)
+
+        batch_size = 4
+        obs = jnp.zeros((batch_size, OBS_SIZE))
+        actions = jnp.array([0, 0, 0, 0], dtype=jnp.int32)
+        advantages = jnp.array([1.0, 1.0, 1.0, 1.0])  # Positive advantages
+        returns = jnp.ones(batch_size)
+        action_masks = jnp.ones((batch_size, NUM_ACTIONS), dtype=jnp.bool_)
+
+        # Artificially create different ratios by manipulating old_log_probs
+        # Higher old_log_prob → lower ratio (policy moved away from this action)
+        logits, _ = network.apply(params, obs)
+        dist = masked_categorical(logits, action_masks)
+        current_log_probs = dist.log_prob(actions)
+
+        # Case 1: ratio ≈ 1 (same policy)
+        _, metrics1 = ppo_loss(
+            params, network.apply, obs, actions,
+            current_log_probs, advantages, returns, action_masks,
+            clip_eps=0.2, vf_coef=0.5, ent_coef=0.01
+        )
+
+        # Case 2: ratio > 1 + clip_eps (policy increased this action's prob)
+        old_log_probs_low = current_log_probs - 1.0  # Makes ratio = e^1 ≈ 2.7
+        _, metrics2 = ppo_loss(
+            params, network.apply, obs, actions,
+            old_log_probs_low, advantages, returns, action_masks,
+            clip_eps=0.2, vf_coef=0.5, ent_coef=0.01
+        )
+
+        # With positive advantages and high ratio, clipping should engage
+        assert metrics2["clip_frac"] > 0.5, "Expected clipping with high ratio"
+
+    def test_entropy_computation(self):
+        """Entropy should be maximal for uniform distribution."""
+        # Uniform logits → uniform distribution → max entropy
+        uniform_logits = jnp.zeros(NUM_ACTIONS)
+        mask = jnp.ones(NUM_ACTIONS, dtype=jnp.bool_)
+        dist = masked_categorical(uniform_logits, mask)
+        uniform_entropy = dist.entropy()
+
+        # Max entropy = log(num_actions) for uniform categorical
+        expected_max = jnp.log(NUM_ACTIONS)
+        assert jnp.allclose(uniform_entropy, expected_max, atol=1e-5)
+
+        # Peaked logits → low entropy
+        peaked_logits = jnp.zeros(NUM_ACTIONS).at[0].set(10.0)
+        peaked_dist = masked_categorical(peaked_logits, mask)
+        peaked_entropy = peaked_dist.entropy()
+
+        assert peaked_entropy < uniform_entropy / 2, "Peaked distribution should have lower entropy"
+
+    def test_log_prob_sums_to_one(self):
+        """Log probabilities should sum to 1 (in probability space)."""
+        logits = jax.random.normal(jax.random.PRNGKey(0), (NUM_ACTIONS,))
+        mask = jnp.ones(NUM_ACTIONS, dtype=jnp.bool_)
+        dist = masked_categorical(logits, mask)
+
+        # Sum of probabilities should be 1
+        all_log_probs = jnp.array([dist.log_prob(jnp.array(i)) for i in range(NUM_ACTIONS)])
+        prob_sum = jnp.exp(all_log_probs).sum()
+        assert jnp.allclose(prob_sum, 1.0, atol=1e-5)
+
+    def test_masked_entropy_excludes_invalid(self):
+        """Entropy with mask should only count valid actions."""
+        logits = jnp.zeros(NUM_ACTIONS)
+
+        # All valid → entropy = log(28)
+        full_mask = jnp.ones(NUM_ACTIONS, dtype=jnp.bool_)
+        full_dist = masked_categorical(logits, full_mask)
+
+        # Only 2 valid → entropy = log(2)
+        partial_mask = jnp.zeros(NUM_ACTIONS, dtype=jnp.bool_).at[0].set(True).at[1].set(True)
+        partial_dist = masked_categorical(logits, partial_mask)
+
+        assert jnp.allclose(full_dist.entropy(), jnp.log(NUM_ACTIONS), atol=1e-4)
+        assert jnp.allclose(partial_dist.entropy(), jnp.log(2), atol=1e-4)
+
+    def test_advantage_normalization_in_loss(self):
+        """Normalized advantages should have mean≈0, std≈1."""
+        # This is a property we can verify by checking the loss computation
+        key = jax.random.PRNGKey(0)
+        network, params = init_network(key, obs_shape=(OBS_SIZE,), hidden_dim=32, num_layers=1)
+
+        batch_size = 64
+        obs = jnp.zeros((batch_size, OBS_SIZE))
+        actions = jnp.zeros(batch_size, dtype=jnp.int32)
+        old_log_probs = jnp.zeros(batch_size)
+        # Non-normalized advantages with weird scale
+        advantages = jnp.array([100.0] * 32 + [200.0] * 32)
+        returns = jnp.ones(batch_size)
+        action_masks = jnp.ones((batch_size, NUM_ACTIONS), dtype=jnp.bool_)
+
+        # Loss should still be reasonable (not explode with large advantages)
+        loss, metrics = ppo_loss(
+            params, network.apply, obs, actions, old_log_probs,
+            advantages, returns, action_masks,
+            clip_eps=0.2, vf_coef=0.5, ent_coef=0.01
+        )
+
+        assert jnp.isfinite(loss)
+        assert jnp.abs(metrics["pg_loss"]) < 10, "Policy loss should be bounded after normalization"
+
+
+class TestReferenceComparison:
+    """Compare outputs against known reference values.
+
+    TODO(human): Implement comparison tests against Stable Baselines3 or CleanRL.
+    This is the gold standard for PPO verification.
+    """
+
+    def test_placeholder_for_reference_comparison(self):
+        """Placeholder - see docstring for what to implement."""
+        # To properly verify PPO:
+        # 1. Run same trajectory through SB3's PPO
+        # 2. Compare: GAE values, loss components, gradient magnitudes
+        # 3. Use np.testing.assert_allclose with small tolerances
+        pass
+
+
+class TestGradientSanity:
+    """Verify gradients flow correctly."""
+
+    def test_gradients_are_nonzero(self):
+        """PPO loss should produce non-zero gradients for all parameters."""
+        key = jax.random.PRNGKey(0)
+        network, params = init_network(key, obs_shape=(OBS_SIZE,), hidden_dim=32, num_layers=2)
+
+        batch_size = 16
+        obs = jax.random.normal(jax.random.PRNGKey(1), (batch_size, OBS_SIZE))
+        actions = jax.random.randint(jax.random.PRNGKey(2), (batch_size,), 0, NUM_ACTIONS)
+        old_log_probs = jax.random.normal(jax.random.PRNGKey(3), (batch_size,)) - 3.0
+        advantages = jax.random.normal(jax.random.PRNGKey(4), (batch_size,))
+        returns = jax.random.normal(jax.random.PRNGKey(5), (batch_size,))
+        action_masks = jnp.ones((batch_size, NUM_ACTIONS), dtype=jnp.bool_)
+
+        # Compute gradients
+        grad_fn = jax.grad(lambda p: ppo_loss(
+            p, network.apply, obs, actions, old_log_probs,
+            advantages, returns, action_masks,
+            clip_eps=0.2, vf_coef=0.5, ent_coef=0.01
+        )[0])
+
+        grads = grad_fn(params)
+
+        # Check all gradient leaves are non-zero
+        flat_grads = jax.tree.leaves(grads)
+        for i, g in enumerate(flat_grads):
+            grad_norm = jnp.linalg.norm(g)
+            assert grad_norm > 1e-10, f"Gradient {i} is zero - possible dead gradient path"
+
+    def test_value_loss_gradient_independent_of_policy(self):
+        """Value loss gradient should only affect critic head."""
+        key = jax.random.PRNGKey(0)
+        network, params = init_network(key, obs_shape=(OBS_SIZE,), hidden_dim=32, num_layers=1)
+
+        batch_size = 8
+        obs = jnp.zeros((batch_size, OBS_SIZE))
+        actions = jnp.zeros(batch_size, dtype=jnp.int32)
+        old_log_probs = jnp.zeros(batch_size)
+        advantages = jnp.zeros(batch_size)  # Zero advantages → zero policy gradient
+        returns = jnp.ones(batch_size) * 10  # Large returns → value loss gradient
+        action_masks = jnp.ones((batch_size, NUM_ACTIONS), dtype=jnp.bool_)
+
+        grad_fn = jax.grad(lambda p: ppo_loss(
+            p, network.apply, obs, actions, old_log_probs,
+            advantages, returns, action_masks,
+            clip_eps=0.2, vf_coef=0.5, ent_coef=0.0  # No entropy to isolate value loss
+        )[0])
+
+        grads = grad_fn(params)
+
+        # With num_layers=1: Dense_0=shared, Dense_1=actor, Dense_2=critic
+        # The actor head should have near-zero gradients (only value loss matters)
+        # Note: Due to advantage normalization, there might be small residual gradients
+        actor_grad = grads['params']['Dense_1']  # Actor head (policy logits)
+        actor_grad_norm = jnp.linalg.norm(jax.tree.leaves(actor_grad)[0])
+
+        critic_grad = grads['params']['Dense_2']  # Critic head (value)
+        critic_grad_norm = jnp.linalg.norm(jax.tree.leaves(critic_grad)[0])
+
+        # Critic gradient should be much larger than actor gradient
+        assert critic_grad_norm > actor_grad_norm * 10, \
+            f"Value loss should primarily affect critic: actor={actor_grad_norm}, critic={critic_grad_norm}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
