@@ -124,6 +124,11 @@ def parse_args():
         default=None,
         help="Path to checkpoint file to resume from (e.g., 'checkpoints/hackmatrix-jax-feb01-26-1/checkpoint_40.pkl')",
     )
+    parser.add_argument(
+        "--rewind",
+        action="store_true",
+        help="When resuming, rewind wandb history to checkpoint step (overwrites later data)",
+    )
 
     # Checkpointing
     parser.add_argument(
@@ -260,36 +265,42 @@ def main():
         "backend": device_info["backend"],
     }
 
-    # Initialize logger
+    # Check for checkpoint to resume from (before logger init for rewind support)
+    checkpoint_path = None
+    resume_from_checkpoint = False
+    checkpoint_step = None
+    if args.resume:
+        if os.path.exists(args.resume):
+            checkpoint_path = args.resume
+            resume_from_checkpoint = True
+            # Load step from checkpoint
+            import pickle
+
+            with open(checkpoint_path, "rb") as f:
+                ckpt = pickle.load(f)
+                checkpoint_step = ckpt.get("last_logged_step", ckpt["step"])
+        else:
+            print(f"Warning: Checkpoint file not found: {args.resume}")
+            print("Starting fresh training")
+
+    # Initialize logger (with rewind_step if --rewind flag is set)
+    rewind_step = checkpoint_step if (args.rewind and checkpoint_step is not None) else None
     logger = TrainingLogger(
         use_wandb=not args.no_wandb,
         project_name=args.project,
         entity=args.entity,
         run_name=run_name,
         run_id=run_id,
-        resume_run=bool(args.resume),  # Just indicate whether resuming, run_id handles the ID
+        resume_run=bool(args.resume),
+        rewind_step=rewind_step,
         config=wandb_config,
         upload_artifacts=not args.no_artifact,
     )
 
-    # Check for checkpoint to resume from
-    checkpoint_path = None
-    resume_from_checkpoint = False
-    if args.resume:
-        if os.path.exists(args.resume):
-            checkpoint_path = args.resume  # Pass the specific file path
-            resume_from_checkpoint = True
-            # Load last_logged_step from checkpoint to avoid wandb step conflicts
-            import pickle
-
-            with open(checkpoint_path, "rb") as f:
-                ckpt = pickle.load(f)
-                last_logged_step = ckpt.get("last_logged_step", ckpt["step"])
-                logger.set_resume_step(last_logged_step)
-                print(f"Setting wandb resume step to {last_logged_step} (from checkpoint)")
-        else:
-            print(f"Warning: Checkpoint file not found: {args.resume}")
-            print("Starting fresh training")
+    # Set resume step if resuming without rewind
+    if resume_from_checkpoint and checkpoint_step is not None and not args.rewind:
+        logger.set_resume_step(checkpoint_step)
+        print(f"Setting wandb resume step to {checkpoint_step} (from checkpoint)")
 
     # Track last checkpoint (step or time based)
     # Only use resume_step if we actually loaded a checkpoint

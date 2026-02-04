@@ -68,6 +68,7 @@ class TrainingLogger:
     - Full hyperparameter config logging to WandB
     - Auto-generated run names with resume support
     - Checkpoint artifact uploads
+    - Rewind support for resuming from earlier checkpoints
     """
 
     use_wandb: bool = False
@@ -76,6 +77,7 @@ class TrainingLogger:
     run_name: str | None = None
     run_id: str | None = None
     resume_run: bool = False
+    rewind_step: int | None = None  # If set, rewind wandb history to this step
     config: dict[str, Any] | None = None
     upload_artifacts: bool = True
     _wandb_run: Any = None
@@ -97,24 +99,35 @@ class TrainingLogger:
         try:
             import wandb
 
-            # Always use run_id for consistent wandb run identification
-            # resume="allow" creates if new, resumes if exists
-            resume_mode = "allow" if self.run_id else None
+            # Use resume_from with step for rewind, otherwise resume="allow"
+            init_kwargs = {
+                "project": self.project_name,
+                "entity": self.entity,
+                "name": self.run_name,
+                "config": self.config,
+            }
 
-            self._wandb_run = wandb.init(
-                project=self.project_name,
-                entity=self.entity,
-                name=self.run_name,
-                id=self.run_id,
-                resume=resume_mode,
-                config=self.config,
-            )
+            if self.rewind_step is not None and self.run_id:
+                # Rewind mode: truncate history at the specified step
+                # This allows overwriting data after that step
+                resume_from = f"{self.entity}/{self.project_name}/{self.run_id}?_step={self.rewind_step}"
+                init_kwargs["resume_from"] = resume_from
+                print(f"Rewinding wandb run to step {self.rewind_step}")
+            elif self.run_id:
+                # Normal resume: continue from last step
+                init_kwargs["id"] = self.run_id
+                init_kwargs["resume"] = "allow"
+
+            self._wandb_run = wandb.init(**init_kwargs)
 
             if self._wandb_run and self.config:
                 print(f"WandB run initialized: {self._wandb_run.url}")
 
             # Track resume step for continued logging
-            if self.resume_run and self._wandb_run:
+            if self.rewind_step is not None:
+                # With rewind, we start fresh from the rewind step
+                self._resume_step = self.rewind_step
+            elif self.resume_run and self._wandb_run:
                 self._resume_step = self._get_last_step()
             else:
                 self._resume_step = 0
