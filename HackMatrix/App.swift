@@ -29,11 +29,6 @@ public struct HackApp: App {
             }
         }
 
-        // Check for --run-tests command-line argument
-        if CommandLine.arguments.contains("--run-tests") {
-            GameLogicTests.runAllTests()
-            exit(0)
-        }
     }
 
     public var body: some Scene {
