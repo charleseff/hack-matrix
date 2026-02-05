@@ -33,6 +33,12 @@ let package = Package(
             name: "HackMatrix",
             dependencies: ["HackMatrixCore"],
             path: "Sources/SPMMain"
+        ),
+        // Unit tests for game logic (works on macOS and Linux)
+        .testTarget(
+            name: "HackMatrixTests",
+            dependencies: ["HackMatrixCore"],
+            path: "Tests/HackMatrixTests"
         )
     ]
 )

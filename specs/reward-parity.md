@@ -51,7 +51,7 @@ Rewards carrying resources into the next stage. Gated on stage completion to pre
 **Constants:**
 - `siphonSuboptimalPenalty = -0.5`
 - `missedValue = missedCredits * 0.05 + missedEnergy * 0.05`
-- Penalty = `0.5 * missedValue` (note: double-negation in Swift code)
+- Penalty = `-0.5 * missedValue` (sign bug was fixed — see `RewardCalculator.swift:217`)
 
 **Algorithm (`checkForBetterSiphonPosition`):**
 1. Compute siphon yield at current position (cross pattern: center + 4 cardinal)
@@ -101,11 +101,12 @@ cumulative = sum(stageRewards[0..<(currentStage - 1)])
 penalty = -cumulative * 0.5
 ```
 
-| Stage at death | Swift penalty | JAX penalty (varies) |
-|---------------|---------------|---------------------|
-| 1 | -0.5 | depends on accumulated shaping |
-| 3 | -3.5 | could be much larger |
-| 8 | -113.5 | could be much larger |
+| Stage at death | Completions | Swift penalty | JAX penalty (varies) |
+|---------------|-------------|---------------|---------------------|
+| 1 (no completions) | 0 | 0.0 | depends on accumulated shaping |
+| 2 (completed stage 1) | 1 | -0.5 | could be much larger |
+| 4 (completed 1-3) | 1+2+4=7 | -3.5 | could be much larger |
+| 8 (completed 1-7) | 1+2+4+8+16+32+64=127 | -63.5 | could be much larger |
 
 **Decision:** Use Swift (stage-only) as canonical. More predictable signal — doesn't punish exploration/kills.
 
@@ -232,9 +233,10 @@ def test_step_penalty_on_neutral_move():
 - `test_reset_at_1hp_no_penalty` — RESET at 1 HP = no waste penalty
 
 #### Death penalty fix (FIX)
-- `test_death_penalty_stage_1` — die at stage 1 = -0.5 (not cumulative-based)
-- `test_death_penalty_stage_3` — die at stage 3 = -(1+2)*0.5 = -1.5
-- `test_death_penalty_with_high_cumulative` — die at stage 1 with high cumulative reward still = -0.5
+- `test_death_penalty_stage_1` — die on stage 1 (no completions) = 0.0
+- `test_death_penalty_stage_2` — die on stage 2 (completed stage 1) = -0.5
+- `test_death_penalty_stage_4` — die on stage 4 (completed 1-3) = -(1+2+4)*0.5 = -3.5
+- `test_death_penalty_with_high_cumulative` — die on stage 1 with high cumulative reward still = 0.0
 
 ### Phase 2 Tests
 

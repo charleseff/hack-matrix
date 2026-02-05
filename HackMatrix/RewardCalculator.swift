@@ -181,9 +181,9 @@ struct RewardCalculator {
                 }
             }
 
-            // Death penalty = 50% of cumulative rewards
-            // Stage 1 death: -0.5, Stage 4 death: -7.5, Stage 8 death: -113.5
-            // Always ensures net positive for completing stages before death
+            // Death penalty = 50% of cumulative stage rewards
+            // Die on stage 1 (no completions): 0, Die on stage 2 (completed 1): -0.5
+            // Die on stage 4 (completed 1-3): -3.5, Die on stage 8 (completed 1-7): -63.5
             breakdown.deathPenalty = -cumulativeReward * 0.5
         }
 
@@ -214,7 +214,7 @@ struct RewardCalculator {
                 // Penalty proportional to missed resources
                 let missedValue = Double(siphonMissedCredits) * creditGainMultiplier +
                                  Double(siphonMissedEnergy) * energyGainMultiplier
-                breakdown.siphonQuality = -siphonSuboptimalPenalty * missedValue
+                breakdown.siphonQuality = siphonSuboptimalPenalty * missedValue
             }
         }
 
