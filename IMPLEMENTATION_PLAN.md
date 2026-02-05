@@ -14,7 +14,7 @@
 | Score gain (delta * 0.5) | `rewards.py:83` | At parity |
 | Kill reward (0.3/kill) | `rewards.py:86-90` | At parity |
 | Data siphon collection (1.0) | `rewards.py:93-96` | At parity |
-| Distance shaping (0.05/cell) | `rewards.py:98-109` | **BUG**: Manhattan, should be BFS |
+| Distance shaping (0.05/cell) | `rewards.py:98-109` | At parity (Phase 3) |
 | HP change (±1.0/HP) | `rewards.py:112-113` | At parity |
 | Victory bonus (500 + score*100) | `rewards.py:116-121` | At parity |
 | Death penalty (stage-only) | `rewards.py:127-132` | At parity (Phase 1) |
@@ -29,16 +29,17 @@
 |-----------|----------------|------------|
 | Siphon quality (penalty for suboptimal position) | `RewardCalculator.swift:211-219` | High |
 
+Distance shaping now uses BFS pathfinding (Phase 3 complete).
+
 ### What doesn't exist yet
 
 | File | Purpose | Required Phase |
 |------|---------|----------------|
-| `python/hackmatrix/jax_env/pathfinding.py` | BFS distance on 6x6 grid | Phase 3 |
 | `python/hackmatrix/jax_env/siphon_quality.py` | Siphon optimality checker | Phase 4 |
 
 ### Tests
 
-- `python/tests/test_reward_parity.py` — 42 JAX-only reward unit tests (Phase 1+2 complete)
+- `python/tests/test_reward_parity.py` — 53 JAX-only reward unit tests (Phase 1+2+3 complete)
 - `python/tests/parity/test_rewards.py` — 14 parity tests via env interface (Swift+JAX)
 - `python/tests/test_purejaxrl.py` — 23 PureJaxRL integration tests
 
@@ -91,24 +92,32 @@
 - Enemy array column layout: `[type, row, col, hp, disabled_turns, is_stunned, spawned_from_siphon, is_from_scheduled_task]` — column 6 is the siphon flag.
 - Cardinal adjacency (matching Swift `isAdjacentToPlayer`): `(|row_diff| == 1 & col_diff == 0) | (row_diff == 0 & |col_diff| == 1)`. Diagonal does NOT count.
 
-### Phase 3: Distance Shaping Fix (BFS)
+### Phase 3: Distance Shaping Fix (BFS) — COMPLETE
 
-- [ ] **3.1** Implement JIT-compatible BFS in new module
-  - File: `python/hackmatrix/jax_env/pathfinding.py` (new)
-  - BFS on 6x6 grid with fixed iteration count (max 36 iterations)
+- [x] **3.1** Implement JIT-compatible BFS in new module
+  - File: `python/hackmatrix/jax_env/pathfinding.py`
+  - BFS on 6x6 grid with fixed-size queue (36 entries) using head/tail pointers
+  - Uses `jax.lax.while_loop` for queue processing, `jax.lax.scan` for 4-direction exploration
   - Obstacles: ALL blocks (siphoned + unsiphoned) — `grid_block_type != 0`
   - Returns distance (int32), or -1 if no path
-  - Must use `jax.lax.while_loop` or `jax.lax.fori_loop` for JIT compatibility
 
-- [ ] **3.2** Replace Manhattan distance in `calculate_reward`
+- [x] **3.2** Replace Manhattan distance in `calculate_reward`
   - File: `python/hackmatrix/jax_env/rewards.py`
   - Import BFS function from `pathfinding.py`
-  - Compute `prev_distance` and `curr_distance` using BFS instead of Manhattan
-  - Fallback: if BFS returns -1 (no path), use Manhattan as fallback
+  - `prev_distance_to_exit` stored in EnvState, computed in `save_previous_state` before action (matches Swift's `oldDistanceToExit`)
+  - Compute `curr_distance` using BFS after action
+  - Fallback: if BFS returns -1 (no path), convert to 0 (matches Swift's `?? 0`)
 
-- [ ] **3.3** Write Phase 3 parity tests
+- [x] **3.3** Write Phase 3 parity tests (11 tests, all passing)
   - File: `python/tests/test_reward_parity.py`
-  - 5 test cases: no obstacles, block wall, no path, death, stage complete
+  - Tests: no obstacles, block wall, no path, death, stage complete, movement toward/away, target checks before block check (matches Swift)
+
+**Learnings from Phase 3:**
+- BFS uses `jax.lax.while_loop` + `jax.lax.scan` (4 directions) for JIT compatibility
+- Queue implemented as fixed-size array (36 entries) with head/tail pointers
+- `prev_distance_to_exit` stored in EnvState, computed in `save_previous_state` before action (matching Swift's `oldDistanceToExit`)
+- Swift BFS checks target BEFORE block check, so target is reachable even if it has a block
+- No-path fallback: BFS returns -1, `rewards.py` converts to 0 (matching Swift's `?? 0`)
 
 ### Phase 4: Siphon Quality Penalty
 
@@ -141,11 +150,11 @@
 - [x] Resource gain, resource holding, program waste implemented
 - [x] Death penalty uses stage-only calculation (matches Swift)
 - [x] Siphon-caused death penalty implemented
-- [ ] Distance shaping uses BFS pathfinding (matches Swift)
+- [x] Distance shaping uses BFS pathfinding (matches Swift)
 - [ ] Siphon quality penalty implemented
-- [x] Phase 1+2 parity tests pass (42/42)
+- [x] Phase 1+2+3 parity tests pass (53/53)
 - [x] Existing `test_purejaxrl.py` tests still pass (23/23)
-- [x] All JAX parity tests still pass (154/154)
+- [x] All non-Swift tests still pass (242/242)
 - [ ] Training runs without regression (healthy PPO metrics)
 
 ## Open Questions

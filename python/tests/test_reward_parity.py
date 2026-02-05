@@ -1,5 +1,5 @@
 """
-JAX-only reward parity tests — Phases 1-2.
+JAX-only reward parity tests — Phases 1-3.
 
 Tests call `calculate_reward` directly with constructed EnvState objects,
 verifying each reward component matches Swift RewardCalculator.swift behavior.
@@ -10,12 +10,17 @@ Why direct testing:
   to movement, enemy AI, and stage logic.
 - These tests isolate the reward function itself, making failures precise:
   a failing test here means the reward formula is wrong, not some upstream bug.
+
+Phase 3 additions:
+- BFS distance shaping tests verify pathfinding matches Swift Pathfinding.findDistance()
+- Tests cover: block walls, no-path fallback, target-on-block edge case
 """
 
 import jax
 import jax.numpy as jnp
 import pytest
 
+from hackmatrix.jax_env.pathfinding import bfs_distance
 from hackmatrix.jax_env.rewards import (
     ACTION_RESET,
     CREDIT_GAIN_MULTIPLIER,
@@ -31,6 +36,7 @@ from hackmatrix.jax_env.rewards import (
 from hackmatrix.jax_env.state import (
     ACTION_MOVE_UP,
     ACTION_SIPHON,
+    GRID_SIZE,
     MAX_ENEMIES,
     STAGE_COMPLETION_REWARDS,
     Player,
@@ -43,6 +49,10 @@ def _make_state(**overrides):
 
     Defaults: player at (0,0), hp=3, exit at (5,5), stage=1, no enemies.
     The 'previous' snapshot mirrors 'current' so deltas start at zero.
+
+    prev_distance_to_exit is auto-computed from previous_player position and
+    grid_block_type via BFS, unless explicitly provided. This matches
+    save_previous_state() which computes BFS before the action.
     """
     key = jax.random.PRNGKey(0)
     state = create_empty_state(key)
@@ -73,10 +83,16 @@ def _make_state(**overrides):
     enemy_mask = overrides.pop("enemy_mask", state.enemy_mask)
     previous_enemy_mask = overrides.pop("previous_enemy_mask", state.previous_enemy_mask)
 
+    # Grid overrides (for BFS pathfinding tests)
+    grid_block_type = overrides.pop("grid_block_type", state.grid_block_type)
+
+    # prev_distance_to_exit: auto-compute from previous player pos + grid if not given
+    explicit_prev_dist = overrides.pop("prev_distance_to_exit", None)
+
     if overrides:
         raise ValueError(f"Unknown overrides: {overrides}")
 
-    return state.replace(
+    state = state.replace(
         player=player,
         previous_player=previous_player,
         stage=stage,
@@ -88,7 +104,19 @@ def _make_state(**overrides):
         enemies=enemies,
         enemy_mask=enemy_mask,
         previous_enemy_mask=previous_enemy_mask,
+        grid_block_type=grid_block_type,
     )
+
+    # Compute prev_distance_to_exit via BFS from previous player position
+    prev_dist = (
+        jnp.int32(explicit_prev_dist) if explicit_prev_dist is not None
+        else bfs_distance(
+            previous_player.row, previous_player.col,
+            state.exit_row, state.exit_col,
+            grid_block_type,
+        )
+    )
+    return state.replace(prev_distance_to_exit=prev_dist)
 
 
 def _reward(state, *, stage_completed=False, game_won=False, player_died=False, action=0):
@@ -195,19 +223,94 @@ class TestDataSiphonCollection:
 # ---------------------------------------------------------------------------
 
 class TestDistanceShaping:
-    """One-directional: +0.05 per cell closer to exit, no penalty for moving away."""
+    """BFS-based distance shaping: +0.05 per cell closer to exit.
+
+    Uses BFS pathfinding (matching Swift Pathfinding.findDistance) instead of
+    Manhattan distance. On an empty grid, BFS == Manhattan. With blocks, BFS
+    accurately measures walkable distance around obstacles.
+    """
 
     def test_move_one_cell_closer(self):
-        # Previous: (0,0), distance = 10. Current: (1,0), distance = 9. Delta = +1.
+        """Empty grid: BFS distance == Manhattan. Move (0,0)→(1,0), exit at (5,5)."""
+        # BFS(0,0→5,5) = 10, BFS(1,0→5,5) = 9. Delta = +1.
         state = _make_state(row=1, col=0, prev_player_row=0, prev_player_col=0)
         r = _reward(state)
         assert r == pytest.approx(STEP_PENALTY + DISTANCE_SHAPING_COEF, abs=1e-5)
 
     def test_move_away_no_penalty(self):
-        # Previous: (1,0), distance = 9. Current: (0,0), distance = 10. Delta = -1 → clamped to 0.
+        """One-directional: moving away gives 0 distance reward (not negative)."""
+        # BFS(1,0→5,5) = 9, BFS(0,0→5,5) = 10. Delta = -1 → clamped to 0.
         state = _make_state(row=0, col=0, prev_player_row=1, prev_player_col=0)
         r = _reward(state)
         assert r == pytest.approx(STEP_PENALTY, abs=1e-5)
+
+    def test_bfs_with_block_wall(self):
+        """BFS correctly routes around a block wall that Manhattan ignores.
+
+        Grid layout (exit at 5,5):
+          Row 3 has blocks at cols 0-4 (wall), col 5 is open.
+          Player moves from (2,4) to (2,5).
+
+          With blocks: BFS from (2,4) must go around the wall.
+          BFS(2,4→5,5) goes: (2,4)→(2,5)→(3,5)→(4,5)→(5,5) = 4
+          BFS(2,5→5,5) goes: (2,5)→(3,5)→(4,5)→(5,5) = 3
+          Delta = 4 - 3 = 1 → reward = 0.05
+        """
+        grid_block_type = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Wall across row 3, cols 0-4
+        grid_block_type = grid_block_type.at[3, 0].set(1)
+        grid_block_type = grid_block_type.at[3, 1].set(1)
+        grid_block_type = grid_block_type.at[3, 2].set(1)
+        grid_block_type = grid_block_type.at[3, 3].set(1)
+        grid_block_type = grid_block_type.at[3, 4].set(1)
+
+        state = _make_state(
+            row=2, col=5,
+            prev_player_row=2, prev_player_col=4,
+            grid_block_type=grid_block_type,
+        )
+        r = _reward(state)
+        assert r == pytest.approx(STEP_PENALTY + DISTANCE_SHAPING_COEF, abs=1e-5)
+
+    def test_bfs_no_path_no_reward(self):
+        """When BFS finds no path, distance falls back to 0 → delta = 0.
+
+        Matching Swift: findDistance returns nil → ?? 0.
+        Both prev and curr distances are 0, so no distance reward.
+        """
+        grid_block_type = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Completely wall off the player with blocks on all sides of row 0
+        # Row 1 all blocks → player at (0,x) cannot reach row 2+
+        for c in range(GRID_SIZE):
+            grid_block_type = grid_block_type.at[1, c].set(1)
+
+        state = _make_state(
+            row=0, col=1,
+            prev_player_row=0, prev_player_col=0,
+            grid_block_type=grid_block_type,
+        )
+        r = _reward(state)
+        # Both BFS distances are -1 → fallback 0. Delta = 0.
+        assert r == pytest.approx(STEP_PENALTY, abs=1e-5)
+
+    def test_bfs_target_on_block_still_reachable(self):
+        """BFS matches Swift: target cell is checked BEFORE block check.
+
+        Swift's findDistance checks `if newRow == target` before `if cell.hasBlock`,
+        so the target is reachable even if it has a block.
+        """
+        grid_block_type = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Put a block on the exit cell (5,5)
+        grid_block_type = grid_block_type.at[5, 5].set(1)
+
+        state = _make_state(
+            row=5, col=4,
+            prev_player_row=4, prev_player_col=4,
+            grid_block_type=grid_block_type,
+        )
+        # BFS(4,4→5,5) = 2, BFS(5,4→5,5) = 1. Delta = 1.
+        r = _reward(state)
+        assert r == pytest.approx(STEP_PENALTY + DISTANCE_SHAPING_COEF, abs=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -527,3 +630,100 @@ class TestSiphonCausedDeathPenalty:
         r = _reward(state, player_died=False)
         # Just step + HP loss, no death penalties at all
         assert r == pytest.approx(STEP_PENALTY - 1.0, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# BFS pathfinding unit tests (NEW in Phase 3)
+# ---------------------------------------------------------------------------
+
+
+class TestBFSDistance:
+    """Direct tests for bfs_distance() matching Swift Pathfinding.findDistance().
+
+    These tests verify the BFS implementation independently of the reward function,
+    ensuring the pathfinding algorithm correctly handles obstacles, edge cases,
+    and matches Swift's exact behavior.
+    """
+
+    def test_same_position_zero(self):
+        """Start == target → distance 0."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        d = int(bfs_distance(jnp.int32(3), jnp.int32(3), jnp.int32(3), jnp.int32(3), grid))
+        assert d == 0
+
+    def test_adjacent_distance_one(self):
+        """Cardinal neighbor → distance 1."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        d = int(bfs_distance(jnp.int32(2), jnp.int32(3), jnp.int32(3), jnp.int32(3), grid))
+        assert d == 1
+
+    def test_empty_grid_manhattan(self):
+        """On empty grid, BFS == Manhattan distance."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        d = int(bfs_distance(jnp.int32(0), jnp.int32(0), jnp.int32(5), jnp.int32(5), grid))
+        assert d == 10  # |5-0| + |5-0|
+
+    def test_block_wall_longer_path(self):
+        """Wall of blocks forces BFS path to be longer than Manhattan.
+
+        Grid (6x6), exit at (5,5):
+          Row 3 blocked at cols 0-4, col 5 open.
+          BFS from (0,0) must go around: right to col 5, then up through (3,5).
+          Manhattan(0,0→5,5) = 10
+          BFS(0,0→5,5) = 10 (go right 5 to (0,5), up 5 to (5,5)) — same!
+
+        Better test: block row 3 fully except col 0.
+          BFS(2,3→4,3): Manhattan = 2. BFS must go left to col 0, up through (3,0), right.
+        """
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Block row 3, cols 1-5 (leave col 0 open)
+        grid = grid.at[3, 1].set(1)
+        grid = grid.at[3, 2].set(1)
+        grid = grid.at[3, 3].set(1)
+        grid = grid.at[3, 4].set(1)
+        grid = grid.at[3, 5].set(1)
+
+        # BFS from (2,3) to (4,3): must detour via (3,0)
+        # Path: (2,3)→(2,2)→(2,1)→(2,0)→(3,0)→(4,0)→(4,1)→(4,2)→(4,3) = 8
+        d = int(bfs_distance(jnp.int32(2), jnp.int32(3), jnp.int32(4), jnp.int32(3), grid))
+        assert d == 8  # Manhattan would be 2
+
+    def test_no_path_returns_negative_one(self):
+        """Completely blocked target → returns -1."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Block entire row 1, cutting off row 0 from rows 2-5
+        for c in range(GRID_SIZE):
+            grid = grid.at[1, c].set(1)
+
+        d = int(bfs_distance(jnp.int32(0), jnp.int32(0), jnp.int32(5), jnp.int32(5), grid))
+        assert d == -1
+
+    def test_target_on_block_reachable(self):
+        """Target cell with a block is still reachable (Swift checks target before block).
+
+        Swift findDistance: `if newRow == target` is checked before `if cell.hasBlock`,
+        so stepping onto the target is always allowed regardless of blocks.
+        """
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        grid = grid.at[5, 5].set(1)  # Block on target
+
+        d = int(bfs_distance(jnp.int32(5), jnp.int32(4), jnp.int32(5), jnp.int32(5), grid))
+        assert d == 1  # Adjacent, reachable despite block
+
+    def test_corner_to_corner(self):
+        """(0,0) to (5,5) on empty grid = 10 steps."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        d = int(bfs_distance(jnp.int32(0), jnp.int32(0), jnp.int32(5), jnp.int32(5), grid))
+        assert d == 10
+
+    def test_surrounded_start_no_path(self):
+        """Start position surrounded by blocks on all sides → no path to distant target."""
+        grid = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+        # Surround (2,2) with blocks
+        grid = grid.at[1, 2].set(1)  # below
+        grid = grid.at[3, 2].set(1)  # above
+        grid = grid.at[2, 1].set(1)  # left
+        grid = grid.at[2, 3].set(1)  # right
+
+        d = int(bfs_distance(jnp.int32(2), jnp.int32(2), jnp.int32(5), jnp.int32(5), grid))
+        assert d == -1

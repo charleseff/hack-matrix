@@ -3,10 +3,11 @@ Reward calculation for HackMatrix JAX environment.
 
 Implements all reward components matching Swift RewardCalculator.swift:
 - Step penalty, stage completion, score gain, kills, data siphon collection
-- Distance shaping, HP change, victory bonus, death penalty
+- Distance shaping (BFS pathfinding), HP change, victory bonus, death penalty
 - Siphon-caused death penalty (extra -10.0 for dying to siphon-spawned enemy)
 - Resource gain, resource holding, program waste penalty
 
+Distance shaping uses BFS (not Manhattan) to match Swift Pathfinding.findDistance().
 Death penalty uses stage-only cumulative calculation (sum of STAGE_COMPLETION_REWARDS
 for completed stages), not the running cumulative_reward, matching Swift behavior.
 """
@@ -14,6 +15,7 @@ for completed stages), not the running cumulative_reward, matching Swift behavio
 import jax
 import jax.numpy as jnp
 
+from .pathfinding import bfs_distance
 from .state import ACTION_PROGRAM_START, PROGRAM_RESET, STAGE_COMPLETION_REWARDS, EnvState
 
 # Distance shaping coefficient (reward per cell closer to exit)
@@ -95,15 +97,17 @@ def calculate_reward(
     siphons_collected = jnp.maximum(curr_siphons - prev_siphons, 0)
     reward = reward + jnp.float32(siphons_collected) * 1.0
 
-    # Distance shaping (one-directional: only reward getting closer)
-    prev_distance = (
-        jnp.abs(state.previous_player.row - state.exit_row)
-        + jnp.abs(state.previous_player.col - state.exit_col)
+    # Distance shaping via BFS (one-directional: only reward getting closer)
+    # prev_distance was pre-computed before the action in save_previous_state
+    # to match Swift's oldDistanceToExit (uses grid before action modifies it).
+    # Swift fallback: nil → 0 (no path means distance 0, so delta = 0).
+    prev_distance = jnp.where(state.prev_distance_to_exit < 0, jnp.int32(0), state.prev_distance_to_exit)
+    curr_bfs = bfs_distance(
+        state.player.row, state.player.col,
+        state.exit_row, state.exit_col,
+        state.grid_block_type,
     )
-    curr_distance = (
-        jnp.abs(state.player.row - state.exit_row)
-        + jnp.abs(state.player.col - state.exit_col)
-    )
+    curr_distance = jnp.where(curr_bfs < 0, jnp.int32(0), curr_bfs)
     distance_delta = prev_distance - curr_distance  # Positive if moved closer
     distance_reward = jnp.maximum(distance_delta, 0) * DISTANCE_SHAPING_COEF
     reward = reward + jnp.float32(distance_reward)

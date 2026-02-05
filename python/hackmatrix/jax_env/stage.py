@@ -5,6 +5,7 @@ Stage generation and state management for HackMatrix JAX environment.
 import jax
 import jax.numpy as jnp
 
+from .pathfinding import bfs_distance
 from .state import (
     BLOCK_DATA,
     BLOCK_PROGRAM,
@@ -17,7 +18,16 @@ from .state import (
 
 
 def save_previous_state(state: EnvState) -> EnvState:
-    """Save current state for UNDO functionality."""
+    """Save current state for UNDO functionality and pre-action BFS distance.
+
+    BFS distance is computed here (before action execution) to match Swift's
+    oldDistanceToExit, which uses the grid state before blocks are modified.
+    """
+    prev_dist = bfs_distance(
+        state.player.row, state.player.col,
+        state.exit_row, state.exit_col,
+        state.grid_block_type,
+    )
     return state.replace(
         previous_state_valid=jnp.bool_(True),
         previous_player=state.player,
@@ -32,6 +42,7 @@ def save_previous_state(state: EnvState) -> EnvState:
         prev_hp=state.player.hp,
         prev_credits=state.player.credits,
         prev_energy=state.player.energy,
+        prev_distance_to_exit=prev_dist,
     )
 
 
