@@ -5,28 +5,28 @@
 
 ## Current State Assessment
 
-### What exists (11/13 reward components at parity)
+### What exists (12/13 reward components at parity)
 
 | Component | JAX File | Status |
 |-----------|----------|--------|
-| Step penalty (-0.01) | `rewards.py:63` | At parity |
-| Stage completion ([1..100]) | `rewards.py:67-73` | At parity |
-| Score gain (delta * 0.5) | `rewards.py:76` | At parity |
-| Kill reward (0.3/kill) | `rewards.py:79-82` | At parity |
-| Data siphon collection (1.0) | `rewards.py:85-88` | At parity |
-| Distance shaping (0.05/cell) | `rewards.py:91-101` | **BUG**: Manhattan, should be BFS |
-| HP change (±1.0/HP) | `rewards.py:104-105` | At parity |
-| Victory bonus (500 + score*100) | `rewards.py:108-113` | At parity |
-| Death penalty (stage-only) | `rewards.py:119-124` | **FIXED** in Phase 1 — now uses stage-only calculation |
-| Resource gain (0.05/unit) | `rewards.py:127-133` | **NEW** in Phase 1 |
-| Resource holding (0.01/unit on stage complete) | `rewards.py:136-144` | **NEW** in Phase 1 |
-| Program waste (-0.3 RESET@2HP) | `rewards.py:147-154` | **NEW** in Phase 1 |
+| Step penalty (-0.01) | `rewards.py:69` | At parity |
+| Stage completion ([1..100]) | `rewards.py:75-80` | At parity |
+| Score gain (delta * 0.5) | `rewards.py:83` | At parity |
+| Kill reward (0.3/kill) | `rewards.py:86-90` | At parity |
+| Data siphon collection (1.0) | `rewards.py:93-96` | At parity |
+| Distance shaping (0.05/cell) | `rewards.py:98-109` | **BUG**: Manhattan, should be BFS |
+| HP change (±1.0/HP) | `rewards.py:112-113` | At parity |
+| Victory bonus (500 + score*100) | `rewards.py:116-121` | At parity |
+| Death penalty (stage-only) | `rewards.py:127-132` | At parity (Phase 1) |
+| Siphon-caused death (-10.0) | `rewards.py:134-142` | **NEW** in Phase 2 |
+| Resource gain (0.05/unit) | `rewards.py:144-151` | At parity (Phase 1) |
+| Resource holding (0.01/unit on stage complete) | `rewards.py:153-162` | At parity (Phase 1) |
+| Program waste (-0.3 RESET@2HP) | `rewards.py:164-172` | At parity (Phase 1) |
 
-### What's still missing (2 components)
+### What's still missing (1 component)
 
 | Component | Swift Reference | Difficulty |
 |-----------|----------------|------------|
-| Siphon-caused death (-10.0 extra) | `RewardCalculator.swift:225` | Medium |
 | Siphon quality (penalty for suboptimal position) | `RewardCalculator.swift:211-219` | High |
 
 ### What doesn't exist yet
@@ -38,7 +38,7 @@
 
 ### Tests
 
-- `python/tests/test_reward_parity.py` — 36 JAX-only reward unit tests (Phase 1 complete)
+- `python/tests/test_reward_parity.py` — 42 JAX-only reward unit tests (Phase 1+2 complete)
 - `python/tests/parity/test_rewards.py` — 14 parity tests via env interface (Swift+JAX)
 - `python/tests/test_purejaxrl.py` — 23 PureJaxRL integration tests
 
@@ -75,18 +75,21 @@
 - `JAX_PLATFORMS=cpu` is required for running tests when TPU is occupied by a training process.
 - Death penalty implementation uses `jnp.arange(8)` mask approach to compute stage-only cumulative without loops — clean JIT-compatible pattern.
 
-### Phase 2: Siphon-Caused Death Penalty
+### Phase 2: Siphon-Caused Death Penalty — COMPLETE
 
-- [ ] **2.1** Implement siphon death detection in `calculate_reward`
+- [x] **2.1** Implement siphon death detection in `calculate_reward`
   - File: `python/hackmatrix/jax_env/rewards.py`
-  - When `player_died`: scan `state.enemies` for any active enemy with `spawned_from_siphon == 1` AND cardinally adjacent to player (Manhattan distance 1, not diagonal)
-  - Apply `-10.0` penalty
-  - Adjacent check: `(|enemy_row - player_row| == 1 AND enemy_col == player_col) OR (enemy_row == player_row AND |enemy_col - player_col| == 1)`
-  - Use `jnp.any()` over masked enemy array
+  - `_any_adjacent_siphon_enemy(state)` scans enemy array for active enemies with `spawned_from_siphon == 1` AND cardinal adjacency
+  - Applies `-10.0` extra penalty on top of regular stage death penalty
+  - Uses vectorized `jnp.any()` over masked enemy array — JIT-compatible
 
-- [ ] **2.2** Write Phase 2 parity tests
+- [x] **2.2** Write Phase 2 parity tests (6 tests, all passing)
   - File: `python/tests/test_reward_parity.py`
-  - 3 test cases: siphon death, non-siphon death, non-adjacent siphon enemy
+  - Tests: siphon death adjacent, non-siphon death, non-adjacent siphon enemy, diagonal (not cardinal), compound with stage penalty, alive with adjacent siphon enemy
+
+**Learnings from Phase 2:**
+- Enemy array column layout: `[type, row, col, hp, disabled_turns, is_stunned, spawned_from_siphon, is_from_scheduled_task]` — column 6 is the siphon flag.
+- Cardinal adjacency (matching Swift `isAdjacentToPlayer`): `(|row_diff| == 1 & col_diff == 0) | (row_diff == 0 & |col_diff| == 1)`. Diagonal does NOT count.
 
 ### Phase 3: Distance Shaping Fix (BFS)
 
@@ -137,10 +140,10 @@
 
 - [x] Resource gain, resource holding, program waste implemented
 - [x] Death penalty uses stage-only calculation (matches Swift)
-- [ ] Siphon-caused death penalty implemented
+- [x] Siphon-caused death penalty implemented
 - [ ] Distance shaping uses BFS pathfinding (matches Swift)
 - [ ] Siphon quality penalty implemented
-- [x] Phase 1 parity tests pass (36/36)
+- [x] Phase 1+2 parity tests pass (42/42)
 - [x] Existing `test_purejaxrl.py` tests still pass (23/23)
 - [x] All JAX parity tests still pass (154/154)
 - [ ] Training runs without regression (healthy PPO metrics)

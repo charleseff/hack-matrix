@@ -4,6 +4,7 @@ Reward calculation for HackMatrix JAX environment.
 Implements all reward components matching Swift RewardCalculator.swift:
 - Step penalty, stage completion, score gain, kills, data siphon collection
 - Distance shaping, HP change, victory bonus, death penalty
+- Siphon-caused death penalty (extra -10.0 for dying to siphon-spawned enemy)
 - Resource gain, resource holding, program waste penalty
 
 Death penalty uses stage-only cumulative calculation (sum of STAGE_COMPLETION_REWARDS
@@ -30,6 +31,10 @@ ENERGY_HOLDING_MULTIPLIER = 0.01
 # Program waste penalty
 RESET_AT_2HP_PENALTY = -0.3
 
+# Siphon-caused death: extra penalty when player dies to a siphon-spawned enemy
+# Matches Swift RewardCalculator.siphonCausedDeathPenalty
+SIPHON_CAUSED_DEATH_PENALTY = -10.0
+
 # Action index for RESET program
 ACTION_RESET = ACTION_PROGRAM_START + PROGRAM_RESET  # 5 + 14 = 19
 
@@ -55,6 +60,7 @@ def calculate_reward(
     - HP change: +1.0/-1.0 per HP gained/lost
     - Victory: 500 + score * 100
     - Death penalty: -0.5 * sum(stage rewards for completed stages)
+    - Siphon death: extra -10.0 when dying to a cardinally adjacent siphon-spawned enemy
     - Resource gain: credits_delta * 0.05 + energy_delta * 0.05
     - Resource holding: (credits * 0.01 + energy * 0.01) on stage completion
     - Program waste: -0.3 for RESET at 2 HP
@@ -125,6 +131,16 @@ def calculate_reward(
     )
     reward = reward + death_penalty
 
+    # Siphon-caused death penalty: extra -10.0 when dying to siphon-spawned enemy
+    # Swift: scan enemies for any adjacent to player with spawnedFromSiphon == true
+    # Adjacent = cardinal only (Manhattan distance 1, not diagonal)
+    siphon_death = jnp.where(
+        player_died & _any_adjacent_siphon_enemy(state),
+        jnp.float32(SIPHON_CAUSED_DEATH_PENALTY),
+        jnp.float32(0.0),
+    )
+    reward = reward + siphon_death
+
     # Resource gain reward: credits_delta * 0.05 + energy_delta * 0.05
     credits_delta = state.player.credits - state.prev_credits
     energy_delta = state.player.energy - state.prev_energy
@@ -156,6 +172,29 @@ def calculate_reward(
     reward = reward + program_waste
 
     return reward
+
+
+def _any_adjacent_siphon_enemy(state: EnvState) -> jnp.bool_:
+    """Check if any active enemy is cardinally adjacent and spawned from siphon.
+
+    Matches Swift GameState.isAdjacentToPlayer: cardinal adjacency only
+    (|row_diff| == 1 && col_diff == 0) || (row_diff == 0 && |col_diff| == 1).
+
+    Enemy array columns: [type, row, col, hp, disabled_turns, is_stunned,
+                          spawned_from_siphon, is_from_scheduled_task]
+    """
+    enemy_rows = state.enemies[:, 1]
+    enemy_cols = state.enemies[:, 2]
+    spawned_from_siphon = state.enemies[:, 6]
+
+    row_diff = jnp.abs(enemy_rows - state.player.row)
+    col_diff = jnp.abs(enemy_cols - state.player.col)
+
+    is_cardinal = ((row_diff == 1) & (col_diff == 0)) | ((row_diff == 0) & (col_diff == 1))
+    is_siphon = spawned_from_siphon == 1
+    is_active = state.enemy_mask
+
+    return jnp.any(is_cardinal & is_siphon & is_active)
 
 
 def _stage_death_penalty(current_stage: jnp.int32) -> jnp.float32:

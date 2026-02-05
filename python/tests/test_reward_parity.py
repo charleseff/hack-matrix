@@ -1,5 +1,5 @@
 """
-JAX-only reward parity tests — Phase 1.
+JAX-only reward parity tests — Phases 1-2.
 
 Tests call `calculate_reward` directly with constructed EnvState objects,
 verifying each reward component matches Swift RewardCalculator.swift behavior.
@@ -24,12 +24,14 @@ from hackmatrix.jax_env.rewards import (
     ENERGY_GAIN_MULTIPLIER,
     ENERGY_HOLDING_MULTIPLIER,
     RESET_AT_2HP_PENALTY,
+    SIPHON_CAUSED_DEATH_PENALTY,
     STEP_PENALTY,
     calculate_reward,
 )
 from hackmatrix.jax_env.state import (
     ACTION_MOVE_UP,
     ACTION_SIPHON,
+    MAX_ENEMIES,
     STAGE_COMPLETION_REWARDS,
     Player,
     create_empty_state,
@@ -401,3 +403,127 @@ class TestCombinedRewards:
         stage_reward = float(STAGE_COMPLETION_REWARDS[1])  # stage 2 = 2.0
         holding = 20 * CREDIT_HOLDING_MULTIPLIER + 10 * ENERGY_HOLDING_MULTIPLIER
         assert r == pytest.approx(STEP_PENALTY + stage_reward + holding, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Siphon-caused death penalty (NEW in Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def _make_enemy(row, col, spawned_from_siphon=False):
+    """Build a single enemy row: [type, row, col, hp, disabled_turns, is_stunned,
+    spawned_from_siphon, is_from_scheduled_task].
+
+    Returns int32 array of shape (8,).
+    """
+    return jnp.array(
+        [0, row, col, 1, 0, 0, int(spawned_from_siphon), 0], dtype=jnp.int32,
+    )
+
+
+def _enemies_and_mask(enemy_specs):
+    """Build enemies array and mask from a list of (row, col, spawned_from_siphon) tuples.
+
+    Fills remaining slots with zeros and False masks.
+    """
+    enemies = jnp.zeros((MAX_ENEMIES, 8), dtype=jnp.int32)
+    mask = jnp.zeros(MAX_ENEMIES, dtype=jnp.bool_)
+    for i, (row, col, siphon) in enumerate(enemy_specs):
+        enemies = enemies.at[i].set(_make_enemy(row, col, spawned_from_siphon=siphon))
+        mask = mask.at[i].set(True)
+    return enemies, mask
+
+
+class TestSiphonCausedDeathPenalty:
+    """Extra -10.0 penalty when player dies to a siphon-spawned, cardinally adjacent enemy.
+
+    Matches Swift: GameState.isAdjacentToPlayer (cardinal only) AND enemy.spawnedFromSiphon.
+    This penalty is *in addition to* the regular stage-based death penalty, heavily
+    penalizing reckless siphoning that spawns enemies which then kill the player.
+    """
+
+    def test_siphon_death_adjacent_enemy(self):
+        """Die with a siphon-spawned enemy one cell above → full penalty."""
+        # Player at (2, 3), siphon enemy at (3, 3) — cardinal adjacent
+        enemies, mask = _enemies_and_mask([(3, 3, True)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1,
+            stage=1,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=True)
+        # step + HP loss + death penalty (stage 1 = 0) + siphon death
+        assert r == pytest.approx(
+            STEP_PENALTY - 1.0 + SIPHON_CAUSED_DEATH_PENALTY, abs=1e-5,
+        )
+
+    def test_non_siphon_death_no_extra_penalty(self):
+        """Die to a regular (non-siphon) adjacent enemy → only normal death penalty."""
+        enemies, mask = _enemies_and_mask([(3, 3, False)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1,
+            stage=1,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=True)
+        # No siphon penalty — just step + HP loss
+        assert r == pytest.approx(STEP_PENALTY - 1.0, abs=1e-5)
+
+    def test_siphon_enemy_not_adjacent(self):
+        """Siphon enemy exists but 2+ cells away → no siphon death penalty."""
+        # Player at (2, 3), siphon enemy at (4, 3) — distance 2, NOT adjacent
+        enemies, mask = _enemies_and_mask([(4, 3, True)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1,
+            stage=1,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=True)
+        assert r == pytest.approx(STEP_PENALTY - 1.0, abs=1e-5)
+
+    def test_siphon_enemy_diagonal_not_adjacent(self):
+        """Siphon enemy diagonally adjacent → NOT cardinal, no siphon death penalty.
+
+        Cardinal adjacency requires exactly one axis at distance 1 and the other at 0.
+        Diagonal means both axes differ, so isAdjacentToPlayer returns false.
+        """
+        # Player at (2, 3), siphon enemy at (3, 4) — diagonal
+        enemies, mask = _enemies_and_mask([(3, 4, True)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1,
+            stage=1,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=True)
+        assert r == pytest.approx(STEP_PENALTY - 1.0, abs=1e-5)
+
+    def test_siphon_death_with_stage_penalty(self):
+        """Siphon death at stage 4 compounds with regular stage death penalty.
+
+        Both penalties stack: -3.5 (stage) + -10.0 (siphon) = -13.5 total penalties.
+        """
+        enemies, mask = _enemies_and_mask([(2, 3, True)])
+        state = _make_state(
+            row=2, col=2, hp=0, prev_hp=1,
+            stage=4,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=True)
+        # step + HP loss + stage penalty (stages 1-3: 1+2+4=7 → -3.5) + siphon death
+        assert r == pytest.approx(
+            STEP_PENALTY - 1.0 - 3.5 + SIPHON_CAUSED_DEATH_PENALTY, abs=1e-5,
+        )
+
+    def test_alive_with_adjacent_siphon_enemy_no_penalty(self):
+        """Player alive with adjacent siphon enemy → no siphon death penalty.
+
+        The penalty only applies when player_died is True.
+        """
+        enemies, mask = _enemies_and_mask([(3, 3, True)])
+        state = _make_state(
+            row=2, col=3, hp=2, prev_hp=3,
+            enemies=enemies, enemy_mask=mask,
+        )
+        r = _reward(state, player_died=False)
+        # Just step + HP loss, no death penalties at all
+        assert r == pytest.approx(STEP_PENALTY - 1.0, abs=1e-5)
