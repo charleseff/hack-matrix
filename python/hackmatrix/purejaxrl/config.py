@@ -66,6 +66,11 @@ class TrainConfig:
         """Total batch size per update."""
         return self.num_envs * self.num_steps
 
+    @property
+    def gradient_steps(self) -> int:
+        """Total gradient steps per PPO update (minibatches × epochs)."""
+        return self.num_minibatches * self.update_epochs
+
 
 def get_device_config() -> dict:
     """Detect available devices and return configuration.
@@ -99,34 +104,39 @@ def auto_scale_for_batch_size(config: TrainConfig) -> TrainConfig:
         - Cause the policy to converge to worse local optima
         - Make the same learning rate effectively more aggressive
 
+        Additionally, if we only scale num_minibatches (not epochs), total gradient
+        steps per update increases proportionally, causing the policy to change too
+        much per update (high KL divergence, high clip fraction).
+
     Solution:
-        Scale num_minibatches proportionally with batch_size to maintain a
-        consistent minibatch_size. This preserves the gradient noise characteristics
-        that work well with smaller num_envs.
+        1. Scale num_minibatches UP to maintain consistent minibatch_size (~8,192)
+        2. Scale update_epochs DOWN to maintain reasonable gradient steps (~32)
+
+        This preserves both:
+        - Gradient noise characteristics (from consistent minibatch_size)
+        - Policy update magnitude (from bounded gradient steps)
 
     Reference configuration (known to work well):
         - num_envs=256, num_steps=128 -> batch_size=32,768
         - num_minibatches=4 -> minibatch_size=8,192
-        - update_epochs=4 -> 16 gradient steps per outer update
+        - update_epochs=4 -> 16 gradient steps per update
 
     With this auto-scaling for num_envs=2048:
         - batch_size=262,144 (8x larger)
-        - num_minibatches=32 (scaled 8x) -> minibatch_size=8,192 (same!)
-        - update_epochs=4 -> 128 gradient steps (8x, but also 8x more data)
-
-    The gradient-steps-per-sample ratio stays constant, maintaining similar
-    training dynamics regardless of num_envs.
+        - num_minibatches=32 (scaled 8x) -> minibatch_size=8,192 (preserved!)
+        - update_epochs=1 (scaled down) -> 32 gradient steps (only 2x, acceptable)
 
     Args:
         config: Base configuration
 
     Returns:
-        Configuration with scaled num_minibatches for large batches
+        Configuration with scaled num_minibatches and update_epochs for large batches
     """
     # Reference values from the known-good 256-env configuration
     REFERENCE_BATCH_SIZE = 256 * 128  # 32,768
     REFERENCE_NUM_MINIBATCHES = 4
-    REFERENCE_MINIBATCH_SIZE = REFERENCE_BATCH_SIZE // REFERENCE_NUM_MINIBATCHES  # 8,192
+    REFERENCE_UPDATE_EPOCHS = 4
+    REFERENCE_GRADIENT_STEPS = REFERENCE_NUM_MINIBATCHES * REFERENCE_UPDATE_EPOCHS  # 16
 
     current_batch_size = config.num_envs * config.num_steps
 
@@ -137,22 +147,26 @@ def auto_scale_for_batch_size(config: TrainConfig) -> TrainConfig:
     # Calculate scale factor (how many times larger is current batch?)
     scale_factor = current_batch_size // REFERENCE_BATCH_SIZE
 
-    # Scale num_minibatches to maintain similar minibatch_size
-    # This keeps gradient noise characteristics consistent
+    # Scale num_minibatches UP to maintain similar minibatch_size
     new_num_minibatches = config.num_minibatches * scale_factor
 
-    # Sanity check: cap at reasonable value to avoid memory issues
-    # 64 minibatches with 4 epochs = 256 gradient steps max
+    # Cap minibatches at reasonable value to avoid memory issues
     new_num_minibatches = min(new_num_minibatches, 64)
 
-    # Verify the resulting minibatch_size is reasonable
+    # Scale update_epochs DOWN to maintain reasonable gradient steps
+    # With 32 minibatches and 1 epoch: 32 gradient steps (2x reference, acceptable)
+    # Minimum 1 epoch required
+    new_update_epochs = max(1, config.update_epochs // scale_factor)
+
     new_minibatch_size = current_batch_size // new_num_minibatches
+    new_gradient_steps = new_num_minibatches * new_update_epochs
 
     print(f"\nAuto-scaling for large batch:")
     print(f"  batch_size: {current_batch_size:,} ({scale_factor}x reference)")
     print(f"  num_minibatches: {config.num_minibatches} -> {new_num_minibatches}")
     print(f"  minibatch_size: {current_batch_size // config.num_minibatches:,} -> {new_minibatch_size:,}")
-    print(f"  gradient_steps: {config.num_minibatches * config.update_epochs} -> {new_num_minibatches * config.update_epochs}")
+    print(f"  update_epochs: {config.update_epochs} -> {new_update_epochs}")
+    print(f"  gradient_steps: {config.num_minibatches * config.update_epochs} -> {new_gradient_steps}")
 
     return TrainConfig(
         num_envs=config.num_envs,
@@ -162,7 +176,7 @@ def auto_scale_for_batch_size(config: TrainConfig) -> TrainConfig:
         gamma=config.gamma,
         gae_lambda=config.gae_lambda,
         num_minibatches=new_num_minibatches,
-        update_epochs=config.update_epochs,
+        update_epochs=new_update_epochs,
         clip_eps=config.clip_eps,
         vf_coef=config.vf_coef,
         ent_coef=config.ent_coef,

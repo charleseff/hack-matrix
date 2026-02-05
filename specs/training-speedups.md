@@ -47,21 +47,23 @@ When scaling `num_envs` from 256 to 2048, training degraded despite higher throu
 | 256 | 32k | 8,192 | **-1.55** |
 | 2048 | 262k | 65,536 | -1.65 (worse) |
 
-**Root cause:** With default `num_minibatches=4`, minibatch_size scales with batch_size. Larger minibatches produce less noisy gradients, which:
-- Reduces beneficial exploration noise
-- Causes convergence to worse local optima
-- Makes the same LR effectively more aggressive
+**Root cause:** Two problems occur with large batches:
+1. **Minibatch size**: With default `num_minibatches=4`, minibatch_size grows 8x. Larger minibatches produce less noisy gradients, reducing beneficial exploration.
+2. **Gradient steps**: If we only scale `num_minibatches` up (to fix #1), total gradient steps per update increases 8x (16 → 128), causing the policy to change too much per update (high KL, high clip fraction).
 
 ### The Solution
 
-Auto-scale `num_minibatches` proportionally with batch size to maintain consistent minibatch_size (~8,192):
+Auto-scale **both** `num_minibatches` (up) and `update_epochs` (down) to maintain:
+- Consistent minibatch_size (~8,192) — preserves gradient noise
+- Bounded gradient steps (~32) — prevents policy overshooting
 
 ```
 For num_envs=2048:
   batch_size: 262,144 (8x reference)
-  num_minibatches: 4 -> 32 (auto-scaled)
+  num_minibatches: 4 -> 32 (scaled up)
   minibatch_size: 65,536 -> 8,192 (preserved!)
-  gradient_steps: 16 -> 128 (8x, matching 8x more data)
+  update_epochs: 4 -> 1 (scaled down)
+  gradient_steps: 16 -> 32 (only 2x, acceptable)
 ```
 
 This is implemented in `auto_scale_for_batch_size()` and called automatically when using default settings.
@@ -93,8 +95,10 @@ This is implemented in `auto_scale_for_batch_size()` and called automatically wh
 
 ## Optimizations
 
-### 1. Auto-Scaled Minibatches (Critical for Large Batches)
-Automatically enabled when using default `num_minibatches`. Maintains ~8,192 minibatch_size regardless of `num_envs`.
+### 1. Auto-Scaled Batch Parameters (Critical for Large Batches)
+Automatically enabled when using default settings. Maintains:
+- ~8,192 minibatch_size (scales `num_minibatches` up)
+- ~32 gradient steps (scales `update_epochs` down)
 
 ### 2. Parallel Environments (High Impact)
 `--num-envs 2048` — TPU v4-8 underutilized at 256. 8x envs ≈ 7x throughput.
@@ -156,8 +160,9 @@ python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
 ### Phase 1: Large Batch Training
 - [x] Test `--num-envs 2048`
 - [x] Identify large-batch training degradation issue
-- [x] Implement `auto_scale_for_batch_size()` fix
-- [ ] **Verify auto-scaling fix produces good training**
+- [x] Implement `auto_scale_for_batch_size()` — scale `num_minibatches`
+- [x] Extend auto-scaling to also scale `update_epochs` (fix gradient steps)
+- [ ] **Verify complete auto-scaling fix produces good training**
 - [ ] Benchmark throughput improvement
 
 ### Phase 2: Larger TPU
@@ -173,7 +178,7 @@ python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
 
 - [ ] 10x throughput (1,800 → 18,000+ steps/sec)
 - [ ] 100M timesteps in < 2 hours
-- [x] ~~Training stability maintained~~ → Need to verify with auto-scaling fix
+- [ ] Training stability: KL < 0.06, clip_fraction < 0.30
 - [ ] Return reaches -1.55 or better (matching 256-env baseline)
 - [ ] `watch_jax_agent.py` works with checkpoint
 
@@ -181,5 +186,6 @@ python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
 
 1. **Don't resume across batch size changes** — Optimizer state becomes miscalibrated
 2. **Minibatch size matters more than batch size** — Gradient noise helps exploration
-3. **PPO doesn't follow linear LR scaling** — Larger batches need same or lower LR
-4. **Auto-scaling is the right abstraction** — Users shouldn't need to understand PPO internals
+3. **Gradient steps matter as much as minibatch size** — More steps = larger policy change per update
+4. **PPO doesn't follow linear LR scaling** — Larger batches need same or lower LR
+5. **Auto-scaling must adjust both dimensions** — Scale `num_minibatches` up AND `update_epochs` down
