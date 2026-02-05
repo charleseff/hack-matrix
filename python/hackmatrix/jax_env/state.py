@@ -250,6 +250,12 @@ class EnvState:
     prev_credits: jnp.int32
     prev_energy: jnp.int32
     prev_distance_to_exit: jnp.int32  # BFS distance before action (-1 = no path)
+
+    # Siphon quality (computed before action in env.py, consumed by calculate_reward)
+    siphon_found_better: jnp.bool_
+    siphon_missed_credits: jnp.int32
+    siphon_missed_energy: jnp.int32
+
     cumulative_reward: jnp.float32
 
 
@@ -347,6 +353,9 @@ def create_empty_state(rng_key: jax.Array) -> EnvState:
         prev_credits=jnp.int32(0),
         prev_energy=jnp.int32(0),
         prev_distance_to_exit=jnp.int32(-1),
+        siphon_found_better=jnp.bool_(False),
+        siphon_missed_credits=jnp.int32(0),
+        siphon_missed_energy=jnp.int32(0),
         cumulative_reward=jnp.float32(0.0),
     )
 

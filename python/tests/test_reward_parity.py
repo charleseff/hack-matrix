@@ -1,5 +1,5 @@
 """
-JAX-only reward parity tests — Phases 1-3.
+JAX-only reward parity tests — Phases 1-4.
 
 Tests call `calculate_reward` directly with constructed EnvState objects,
 verifying each reward component matches Swift RewardCalculator.swift behavior.
@@ -11,9 +11,8 @@ Why direct testing:
 - These tests isolate the reward function itself, making failures precise:
   a failing test here means the reward formula is wrong, not some upstream bug.
 
-Phase 3 additions:
-- BFS distance shaping tests verify pathfinding matches Swift Pathfinding.findDistance()
-- Tests cover: block walls, no-path fallback, target-on-block edge case
+Phase 3: BFS distance shaping (block walls, no-path fallback, target-on-block)
+Phase 4: Siphon quality penalty (optimal, suboptimal, different blocks, programs)
 """
 
 import jax
@@ -30,12 +29,16 @@ from hackmatrix.jax_env.rewards import (
     ENERGY_HOLDING_MULTIPLIER,
     RESET_AT_2HP_PENALTY,
     SIPHON_CAUSED_DEATH_PENALTY,
+    SIPHON_SUBOPTIMAL_PENALTY,
     STEP_PENALTY,
     calculate_reward,
 )
+from hackmatrix.jax_env.siphon_quality import check_siphon_optimality
 from hackmatrix.jax_env.state import (
     ACTION_MOVE_UP,
     ACTION_SIPHON,
+    BLOCK_DATA,
+    BLOCK_PROGRAM,
     GRID_SIZE,
     MAX_ENEMIES,
     STAGE_COMPLETION_REWARDS,
@@ -83,8 +86,19 @@ def _make_state(**overrides):
     enemy_mask = overrides.pop("enemy_mask", state.enemy_mask)
     previous_enemy_mask = overrides.pop("previous_enemy_mask", state.previous_enemy_mask)
 
-    # Grid overrides (for BFS pathfinding tests)
+    # Grid overrides (for BFS pathfinding and siphon quality tests)
     grid_block_type = overrides.pop("grid_block_type", state.grid_block_type)
+    grid_block_points = overrides.pop("grid_block_points", state.grid_block_points)
+    grid_block_program = overrides.pop("grid_block_program", state.grid_block_program)
+    grid_block_siphoned = overrides.pop("grid_block_siphoned", state.grid_block_siphoned)
+    grid_resources_credits = overrides.pop("grid_resources_credits", state.grid_resources_credits)
+    grid_resources_energy = overrides.pop("grid_resources_energy", state.grid_resources_energy)
+    owned_programs = overrides.pop("owned_programs", state.owned_programs)
+
+    # Siphon quality overrides (pre-computed by env.py, set directly for testing)
+    siphon_found_better = jnp.bool_(overrides.pop("siphon_found_better", False))
+    siphon_missed_credits = jnp.int32(overrides.pop("siphon_missed_credits", 0))
+    siphon_missed_energy = jnp.int32(overrides.pop("siphon_missed_energy", 0))
 
     # prev_distance_to_exit: auto-compute from previous player pos + grid if not given
     explicit_prev_dist = overrides.pop("prev_distance_to_exit", None)
@@ -105,6 +119,15 @@ def _make_state(**overrides):
         enemy_mask=enemy_mask,
         previous_enemy_mask=previous_enemy_mask,
         grid_block_type=grid_block_type,
+        grid_block_points=grid_block_points,
+        grid_block_program=grid_block_program,
+        grid_block_siphoned=grid_block_siphoned,
+        grid_resources_credits=grid_resources_credits,
+        grid_resources_energy=grid_resources_energy,
+        owned_programs=owned_programs,
+        siphon_found_better=siphon_found_better,
+        siphon_missed_credits=siphon_missed_credits,
+        siphon_missed_energy=siphon_missed_energy,
     )
 
     # Compute prev_distance_to_exit via BFS from previous player position
@@ -727,3 +750,277 @@ class TestBFSDistance:
 
         d = int(bfs_distance(jnp.int32(2), jnp.int32(2), jnp.int32(5), jnp.int32(5), grid))
         assert d == -1
+
+
+# ---------------------------------------------------------------------------
+# Siphon quality penalty (NEW in Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def _grid_with_blocks(**block_specs):
+    """Build grid arrays with blocks at specified positions.
+
+    block_specs: keyword args mapping to lists of (row, col, points_or_program_idx) tuples.
+      - data_blocks: list of (row, col, points) for data blocks
+      - program_blocks: list of (row, col, program_idx) for program blocks
+
+    Returns (grid_block_type, grid_block_points, grid_block_program) arrays.
+    """
+    grid_block_type = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+    grid_block_points = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+    grid_block_program = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+
+    for row, col, points in block_specs.get("data_blocks", []):
+        grid_block_type = grid_block_type.at[row, col].set(BLOCK_DATA)
+        grid_block_points = grid_block_points.at[row, col].set(points)
+
+    for row, col, prog_idx in block_specs.get("program_blocks", []):
+        grid_block_type = grid_block_type.at[row, col].set(BLOCK_PROGRAM)
+        grid_block_program = grid_block_program.at[row, col].set(prog_idx)
+
+    return grid_block_type, grid_block_points, grid_block_program
+
+
+def _grid_with_resources(**resource_specs):
+    """Build grid resource arrays.
+
+    resource_specs:
+      - credits: list of (row, col, amount)
+      - energy: list of (row, col, amount)
+
+    Returns (grid_resources_credits, grid_resources_energy) arrays.
+    """
+    credits = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+    energy = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.int32)
+
+    for row, col, amount in resource_specs.get("credits", []):
+        credits = credits.at[row, col].set(amount)
+
+    for row, col, amount in resource_specs.get("energy", []):
+        energy = energy.at[row, col].set(amount)
+
+    return credits, energy
+
+
+class TestSiphonQualityDirect:
+    """Direct tests for check_siphon_optimality() matching Swift
+    checkForBetterSiphonPosition().
+
+    Tests verify the optimality detection and missed resource computation
+    independently of the reward function.
+    """
+
+    def test_optimal_no_better_position(self):
+        """Player at only valid position to siphon the block → optimal."""
+        # Data block at (3,3) with 5 points. Player at (3,2).
+        # Only positions that can reach (3,3): (3,2), (3,4), (2,3), (4,3), (3,3 itself is blocked)
+        # No resources on grid → all valid positions have same yield → no strictly better.
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            data_blocks=[(3, 3, 5)],
+        )
+        state = _make_state(
+            row=3, col=2,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        assert not bool(found)
+        assert int(missed_cr) == 0
+        assert int(missed_en) == 0
+
+    def test_suboptimal_missed_credits(self):
+        """Another position reaches same block but collects more credits.
+
+        Data block at (2,2). Player at (2,1). Credit resource at (2,3)=10.
+        Position (2,3) also reaches block (2,2) AND has credit at (2,4) nearby.
+        Wait, need to be more careful about the cross pattern.
+
+        Let's set up: data block at (2,2), player at (2,1).
+        Player's cross: (2,1), (1,1), (3,1), (2,0), (2,2) — reaches block at (2,2).
+        No resources adjacent to player.
+
+        Position (2,3): cross is (2,3), (1,3), (3,3), (2,2), (2,4).
+        Same block at (2,2). Credits at (2,4)=10 → strictly better.
+        """
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            data_blocks=[(2, 2, 5)],
+        )
+        res_credits, res_energy = _grid_with_resources(
+            credits=[(2, 4, 10)],
+        )
+        state = _make_state(
+            row=2, col=1,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+            grid_resources_credits=res_credits,
+            grid_resources_energy=res_energy,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        assert bool(found)
+        assert int(missed_cr) == 10
+        assert int(missed_en) == 0
+
+    def test_different_blocks_not_comparable(self):
+        """Position with more resources but different block set → not comparable.
+
+        Data block A at (1,2) with 3 pts, data block B at (3,2) with 7 pts.
+        Player at (2,2): cross reaches both A and B. block_values = sorted [3, 7].
+        Position (0,2): cross = (0,2),(1,2),(-1,2 OOB),(0,1),(0,3).
+          Reaches only block A at (1,2). block_values = [3].
+        Different block sets → not strictly better, even if more resources.
+        """
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            data_blocks=[(1, 2, 3), (3, 2, 7)],
+        )
+        res_credits, res_energy = _grid_with_resources(
+            credits=[(0, 1, 20)],  # Lots of credits near (0,2) but won't help
+        )
+        state = _make_state(
+            row=2, col=2,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+            grid_resources_credits=res_credits,
+            grid_resources_energy=res_energy,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        assert not bool(found)
+
+    def test_program_blocks_must_match(self):
+        """Program sets must match exactly for strict dominance.
+
+        Program block at (2,2) with prog 5 (DEBUG). Player at (2,1).
+        Position (2,3): reaches same program block, also has credits.
+        → Strictly better (same program set + more resources).
+        """
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            program_blocks=[(2, 2, 6)],  # DEBUG program (index 6)
+        )
+        res_credits, res_energy = _grid_with_resources(
+            credits=[(2, 4, 5)],
+        )
+        state = _make_state(
+            row=2, col=1,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+            grid_resources_credits=res_credits,
+            grid_resources_energy=res_energy,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        assert bool(found)
+        assert int(missed_cr) == 5
+
+    def test_already_siphoned_blocks_excluded(self):
+        """Already-siphoned blocks are not counted in yield comparison."""
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            data_blocks=[(2, 2, 5)],
+        )
+        siphoned = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_)
+        siphoned = siphoned.at[2, 2].set(True)  # Block already siphoned
+
+        state = _make_state(
+            row=2, col=1,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+            grid_block_siphoned=siphoned,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        # Block is siphoned → not counted. All positions yield same (empty) → optimal.
+        assert not bool(found)
+
+    def test_owned_program_excluded(self):
+        """Already-owned programs are excluded from yield comparison."""
+        block_type, block_pts, block_prog = _grid_with_blocks(
+            program_blocks=[(2, 2, 6)],  # DEBUG program (index 6)
+        )
+        owned = jnp.zeros(23, dtype=jnp.bool_)
+        owned = owned.at[6].set(True)  # Already own DEBUG
+
+        state = _make_state(
+            row=2, col=1,
+            grid_block_type=block_type,
+            grid_block_points=block_pts,
+            grid_block_program=block_prog,
+            owned_programs=owned,
+        )
+        found, missed_cr, missed_en = check_siphon_optimality(state)
+        # Owned program excluded → program set is empty for all positions → no difference.
+        assert not bool(found)
+
+
+class TestSiphonQualityReward:
+    """Siphon quality penalty integrated into calculate_reward.
+
+    Penalty = -0.5 * (missed_credits * 0.05 + missed_energy * 0.05).
+    Only applies when action == SIPHON and siphon_found_better is True.
+
+    The siphon quality fields (siphon_found_better, siphon_missed_credits,
+    siphon_missed_energy) are pre-computed by env.py before the action.
+    """
+
+    def test_optimal_siphon_no_penalty(self):
+        """Optimal siphon position → 0 penalty."""
+        state = _make_state(
+            siphon_found_better=False,
+            siphon_missed_credits=0,
+            siphon_missed_energy=0,
+        )
+        r = _reward(state, action=ACTION_SIPHON)
+        assert r == pytest.approx(STEP_PENALTY, abs=1e-5)
+
+    def test_suboptimal_siphon_penalty(self):
+        """Suboptimal siphon with 10 missed credits → penalty applied.
+
+        missed_value = 10 * 0.05 = 0.5
+        penalty = -0.5 * 0.5 = -0.25
+        """
+        state = _make_state(
+            siphon_found_better=True,
+            siphon_missed_credits=10,
+            siphon_missed_energy=0,
+        )
+        r = _reward(state, action=ACTION_SIPHON)
+        expected_penalty = SIPHON_SUBOPTIMAL_PENALTY * (10 * CREDIT_GAIN_MULTIPLIER)
+        assert r == pytest.approx(STEP_PENALTY + expected_penalty, abs=1e-5)
+
+    def test_suboptimal_both_resources(self):
+        """Missed credits and energy → combined penalty.
+
+        missed_value = 8 * 0.05 + 4 * 0.05 = 0.6
+        penalty = -0.5 * 0.6 = -0.3
+        """
+        state = _make_state(
+            siphon_found_better=True,
+            siphon_missed_credits=8,
+            siphon_missed_energy=4,
+        )
+        r = _reward(state, action=ACTION_SIPHON)
+        expected_penalty = SIPHON_SUBOPTIMAL_PENALTY * (
+            8 * CREDIT_GAIN_MULTIPLIER + 4 * ENERGY_GAIN_MULTIPLIER
+        )
+        assert r == pytest.approx(STEP_PENALTY + expected_penalty, abs=1e-5)
+
+    def test_non_siphon_action_no_penalty(self):
+        """Non-siphon action ignores siphon quality fields entirely."""
+        state = _make_state(
+            siphon_found_better=True,
+            siphon_missed_credits=100,
+            siphon_missed_energy=100,
+        )
+        r = _reward(state, action=ACTION_MOVE_UP)
+        # Move action → no siphon quality penalty
+        assert r == pytest.approx(STEP_PENALTY, abs=1e-5)
+
+    def test_found_better_false_no_penalty(self):
+        """siphon_found_better=False → no penalty even with nonzero missed values."""
+        state = _make_state(
+            siphon_found_better=False,
+            siphon_missed_credits=10,
+            siphon_missed_energy=5,
+        )
+        r = _reward(state, action=ACTION_SIPHON)
+        assert r == pytest.approx(STEP_PENALTY, abs=1e-5)

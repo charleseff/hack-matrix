@@ -1,22 +1,24 @@
 """
 Reward calculation for HackMatrix JAX environment.
 
-Implements all reward components matching Swift RewardCalculator.swift:
+Implements all 14 reward components matching Swift RewardCalculator.swift:
 - Step penalty, stage completion, score gain, kills, data siphon collection
 - Distance shaping (BFS pathfinding), HP change, victory bonus, death penalty
 - Siphon-caused death penalty (extra -10.0 for dying to siphon-spawned enemy)
 - Resource gain, resource holding, program waste penalty
+- Siphon quality penalty (suboptimal position penalized proportionally)
 
 Distance shaping uses BFS (not Manhattan) to match Swift Pathfinding.findDistance().
 Death penalty uses stage-only cumulative calculation (sum of STAGE_COMPLETION_REWARDS
 for completed stages), not the running cumulative_reward, matching Swift behavior.
+Siphon quality is pre-computed before the action to use correct pre-siphon state.
 """
 
 import jax
 import jax.numpy as jnp
 
 from .pathfinding import bfs_distance
-from .state import ACTION_PROGRAM_START, PROGRAM_RESET, STAGE_COMPLETION_REWARDS, EnvState
+from .state import ACTION_PROGRAM_START, ACTION_SIPHON, PROGRAM_RESET, STAGE_COMPLETION_REWARDS, EnvState
 
 # Distance shaping coefficient (reward per cell closer to exit)
 DISTANCE_SHAPING_COEF = 0.05
@@ -36,6 +38,10 @@ RESET_AT_2HP_PENALTY = -0.3
 # Siphon-caused death: extra penalty when player dies to a siphon-spawned enemy
 # Matches Swift RewardCalculator.siphonCausedDeathPenalty
 SIPHON_CAUSED_DEATH_PENALTY = -10.0
+
+# Siphon quality: penalty multiplier for suboptimal siphon position
+# Matches Swift RewardCalculator.siphonSuboptimalPenalty
+SIPHON_SUBOPTIMAL_PENALTY = -0.5
 
 # Action index for RESET program
 ACTION_RESET = ACTION_PROGRAM_START + PROGRAM_RESET  # 5 + 14 = 19
@@ -66,6 +72,7 @@ def calculate_reward(
     - Resource gain: credits_delta * 0.05 + energy_delta * 0.05
     - Resource holding: (credits * 0.01 + energy * 0.01) on stage completion
     - Program waste: -0.3 for RESET at 2 HP
+    - Siphon quality: -0.5 * (missed_credits * 0.05 + missed_energy * 0.05)
     """
     # Start with step penalty (creates urgency to reach exit)
     reward = jnp.float32(STEP_PENALTY)
@@ -174,6 +181,21 @@ def calculate_reward(
         jnp.float32(0.0),
     )
     reward = reward + program_waste
+
+    # Siphon quality penalty: penalize suboptimal siphon positioning.
+    # Pre-computed in env.py before the action modifies grid state.
+    # Only applies when action is siphon AND a strictly better position exists.
+    is_siphon_action = action == ACTION_SIPHON
+    missed_value = (
+        jnp.float32(state.siphon_missed_credits) * CREDIT_GAIN_MULTIPLIER
+        + jnp.float32(state.siphon_missed_energy) * ENERGY_GAIN_MULTIPLIER
+    )
+    siphon_quality = jnp.where(
+        is_siphon_action & state.siphon_found_better,
+        jnp.float32(SIPHON_SUBOPTIMAL_PENALTY) * missed_value,
+        jnp.float32(0.0),
+    )
+    reward = reward + siphon_quality
 
     return reward
 

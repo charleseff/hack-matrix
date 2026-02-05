@@ -5,7 +5,7 @@
 
 ## Current State Assessment
 
-### What exists (12/13 reward components at parity)
+### What exists (13/13 reward components at parity)
 
 | Component | JAX File | Status |
 |-----------|----------|--------|
@@ -18,28 +18,17 @@
 | HP change (±1.0/HP) | `rewards.py:112-113` | At parity |
 | Victory bonus (500 + score*100) | `rewards.py:116-121` | At parity |
 | Death penalty (stage-only) | `rewards.py:127-132` | At parity (Phase 1) |
-| Siphon-caused death (-10.0) | `rewards.py:134-142` | **NEW** in Phase 2 |
+| Siphon-caused death (-10.0) | `rewards.py:134-142` | At parity (Phase 2) |
 | Resource gain (0.05/unit) | `rewards.py:144-151` | At parity (Phase 1) |
 | Resource holding (0.01/unit on stage complete) | `rewards.py:153-162` | At parity (Phase 1) |
 | Program waste (-0.3 RESET@2HP) | `rewards.py:164-172` | At parity (Phase 1) |
+| Siphon quality (penalty for suboptimal position) | `rewards.py:175-186` | At parity (Phase 4) |
 
-### What's still missing (1 component)
-
-| Component | Swift Reference | Difficulty |
-|-----------|----------------|------------|
-| Siphon quality (penalty for suboptimal position) | `RewardCalculator.swift:211-219` | High |
-
-Distance shaping now uses BFS pathfinding (Phase 3 complete).
-
-### What doesn't exist yet
-
-| File | Purpose | Required Phase |
-|------|---------|----------------|
-| `python/hackmatrix/jax_env/siphon_quality.py` | Siphon optimality checker | Phase 4 |
+**All phases complete. Distance shaping uses BFS pathfinding. Siphon quality penalty fully implemented.**
 
 ### Tests
 
-- `python/tests/test_reward_parity.py` — 53 JAX-only reward unit tests (Phase 1+2+3 complete)
+- `python/tests/test_reward_parity.py` — 64 JAX-only reward unit tests (Phases 1-4 complete)
 - `python/tests/parity/test_rewards.py` — 14 parity tests via env interface (Swift+JAX)
 - `python/tests/test_purejaxrl.py` — 23 PureJaxRL integration tests
 
@@ -72,9 +61,8 @@ Distance shaping now uses BFS pathfinding (Phase 3 complete).
 - [x] **1.7** Write Phase 1 parity tests (36 tests, all passing)
 
 **Learnings from Phase 1:**
-- Stage 8 completion sets `state.stage = 9` after `advance_stage`. The stage reward guard needed `state.stage <= 9` (not `<= 8`) to include the final stage reward alongside the victory bonus.
-- `JAX_PLATFORMS=cpu` is required for running tests when TPU is occupied by a training process.
-- Death penalty implementation uses `jnp.arange(8)` mask approach to compute stage-only cumulative without loops — clean JIT-compatible pattern.
+- Stage 8 completion sets `state.stage = 9` after `advance_stage` — guard needed `state.stage <= 9` to include final stage reward
+- Death penalty uses `jnp.arange(8)` mask for stage-only cumulative (JIT-compatible, no loops)
 
 ### Phase 2: Siphon-Caused Death Penalty — COMPLETE
 
@@ -113,37 +101,44 @@ Distance shaping now uses BFS pathfinding (Phase 3 complete).
   - Tests: no obstacles, block wall, no path, death, stage complete, movement toward/away, target checks before block check (matches Swift)
 
 **Learnings from Phase 3:**
-- BFS uses `jax.lax.while_loop` + `jax.lax.scan` (4 directions) for JIT compatibility
-- Queue implemented as fixed-size array (36 entries) with head/tail pointers
-- `prev_distance_to_exit` stored in EnvState, computed in `save_previous_state` before action (matching Swift's `oldDistanceToExit`)
-- Swift BFS checks target BEFORE block check, so target is reachable even if it has a block
-- No-path fallback: BFS returns -1, `rewards.py` converts to 0 (matching Swift's `?? 0`)
+- BFS uses `jax.lax.while_loop` + `jax.lax.scan` for JIT compatibility
+- `prev_distance_to_exit` stored in EnvState, computed before action (matches Swift's `oldDistanceToExit`)
+- Swift BFS checks target BEFORE block check — target reachable even if it has a block
 
-### Phase 4: Siphon Quality Penalty
+### Phase 4: Siphon Quality Penalty — COMPLETE
 
-- [ ] **4.1** Implement siphon yield computation
+- [x] **4.1** Implement siphon yield computation
   - File: `python/hackmatrix/jax_env/siphon_quality.py` (new)
   - `compute_siphon_yield(state, row, col)` → (credits, energy, block_values_sorted, programs)
-  - Cross pattern: center + 4 cardinal = 5 cells
-  - Credits/energy from non-block cells
-  - Block values from unsiphoned data blocks
-  - Programs from unsiphoned program blocks
+  - Vectorized cross pattern computation for all 36 positions simultaneously using pre-computed index arrays
+  - Credits/energy from non-block cells in the siphon cross
+  - Block values from unsiphoned data blocks (sorted, zero-padded to fixed size)
+  - Programs from unsiphoned program blocks (boolean mask excluding owned programs)
 
-- [ ] **4.2** Implement grid-wide optimality check
+- [x] **4.2** Implement grid-wide optimality check
   - File: `python/hackmatrix/jax_env/siphon_quality.py`
   - `check_siphon_optimality(state)` → (is_optimal, missed_credits, missed_energy)
-  - For all 36 grid positions, compute yield
+  - Vectorized yield computation for all 36 grid positions in parallel
   - Filter: position must not be on a block (any block, siphoned or not)
-  - Set equality: sort block values arrays and compare element-wise
+  - Set equality: compare sorted zero-padded arrays element-wise
   - Strict dominance: `>= credits AND >= energy AND (> credits OR > energy)`
 
-- [ ] **4.3** Integrate into `calculate_reward`
+- [x] **4.3** Integrate into `calculate_reward`
   - File: `python/hackmatrix/jax_env/rewards.py`
-  - Only evaluate when `action == ACTION_SIPHON` (action 4)
+  - Gated behind `jax.lax.cond(action == SIPHON & data_siphons > 0)` to avoid unnecessary computation
+  - Siphon quality pre-computed in `env.py` BEFORE action execution to use correct pre-siphon state
   - Penalty: `siphonSuboptimalPenalty * missedValue` where `missedValue = missedCredits * 0.05 + missedEnergy * 0.05`
 
-- [ ] **4.4** Write Phase 4 parity tests
-  - 4 test cases: optimal, suboptimal, different blocks, non-siphon action
+- [x] **4.4** Write Phase 4 parity tests (11 tests, all passing)
+  - File: `python/tests/test_reward_parity.py`
+  - Tests: optimal single cell, suboptimal (better position exists), different block values, owned programs excluded, non-siphon action (no penalty), empty grid, multiple equivalent positions, cross-cell block detection, resource-only differences, strict dominance edge cases
+
+**Learnings from Phase 4:**
+- Vectorized yield computation across all 36 positions simultaneously using pre-computed cross-cell index arrays — eliminates loops, fully JIT-compatible
+- Siphon quality pre-computed in `env.py` BEFORE action to use correct pre-siphon state (owned_programs, grid_block_siphoned) — crucial for accurate optimality check
+- Gated behind `jax.lax.cond(action == SIPHON & data_siphons > 0)` to avoid unnecessary computation on non-siphon actions
+- Block value comparison uses sorted fixed-size arrays with zero padding (ascending sort, zeros first) for set equality
+- Program set comparison uses boolean mask (23,) with owned programs excluded from both sets
 
 ## Success Criteria
 
@@ -151,11 +146,11 @@ Distance shaping now uses BFS pathfinding (Phase 3 complete).
 - [x] Death penalty uses stage-only calculation (matches Swift)
 - [x] Siphon-caused death penalty implemented
 - [x] Distance shaping uses BFS pathfinding (matches Swift)
-- [ ] Siphon quality penalty implemented
-- [x] Phase 1+2+3 parity tests pass (53/53)
+- [x] Siphon quality penalty implemented
+- [x] All parity tests pass (64/64 in test_reward_parity.py)
 - [x] Existing `test_purejaxrl.py` tests still pass (23/23)
-- [x] All non-Swift tests still pass (242/242)
-- [ ] Training runs without regression (healthy PPO metrics)
+- [x] All non-Swift tests still pass (253/253)
+- [x] Training runs without regression (healthy PPO metrics)
 
 ## Open Questions
 

@@ -14,6 +14,7 @@ from .enemy import process_enemy_turn
 from .observation import Observation, get_observation
 from .programs import is_program_valid
 from .rewards import calculate_reward
+from .siphon_quality import check_siphon_optimality
 from .stage import advance_stage, save_previous_state
 from .state import (
     ACTION_MOVE_DOWN,
@@ -95,6 +96,21 @@ def step(
 
     # Save previous state for reward calculation and UNDO
     state = save_previous_state(state)
+
+    # Pre-compute siphon quality before action modifies grid/programs.
+    # Only compute for siphon actions with siphons available (matching Swift
+    # performSiphon guard: returns wasOptimal=true when no siphons left).
+    should_check_siphon = (action == ACTION_SIPHON) & (state.player.data_siphons > 0)
+    found_better, missed_credits, missed_energy = jax.lax.cond(
+        should_check_siphon,
+        lambda: check_siphon_optimality(state),
+        lambda: (jnp.bool_(False), jnp.int32(0), jnp.int32(0)),
+    )
+    state = state.replace(
+        siphon_found_better=found_better,
+        siphon_missed_credits=missed_credits,
+        siphon_missed_energy=missed_energy,
+    )
 
     # Track action type for exit checking
     is_move_action = action < 4
