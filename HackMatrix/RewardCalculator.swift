@@ -4,6 +4,7 @@ import Foundation
 
 /// Detailed breakdown of reward components for debugging and analysis
 struct RewardBreakdown {
+    var stepPenalty: Double = 0
     var stageCompletion: Double = 0
     var scoreGain: Double = 0
     var kills: Double = 0
@@ -30,7 +31,7 @@ struct RewardBreakdown {
     var siphonDeathPenalty: Double = 0  // Extra penalty for dying to siphon-spawned enemy
 
     var total: Double {
-        stageCompletion + scoreGain + kills + dataSiphonCollected +
+        stepPenalty + stageCompletion + scoreGain + kills + dataSiphonCollected +
         distanceShaping + victory + deathPenalty +
         resourceGain + resourceHolding +
         damagePenalty + hpRecovery +
@@ -63,6 +64,9 @@ struct RewardCalculator {
 
     // MARK: Siphon Death Constants
     private static let siphonCausedDeathPenalty: Double = -10.0 // Extra penalty for dying to siphon-spawned enemy
+
+    // MARK: Step Penalty Constants
+    private static let stepPenalty: Double = -0.01 // Per-step cost to create time pressure
 
     /// Calculate reward for reinforcement learning based on action outcome
     /// - Parameters:
@@ -122,6 +126,9 @@ struct RewardCalculator {
 
         var breakdown = RewardBreakdown()
 
+        // 0. STEP PENALTY (creates time pressure, discourages oscillation)
+        breakdown.stepPenalty = stepPenalty
+
         // 1. PROGRESSIVE STAGE COMPLETION (guides agent toward winning)
         // Exponential scaling creates strong gradient toward later stages
         // Early stages easy to reach, later stages increasingly valuable
@@ -150,9 +157,9 @@ struct RewardCalculator {
         }
 
         // 4. DISTANCE SHAPING (guides agent toward exit)
-        // Small reward for getting closer, penalty for getting farther
-        // Also rewards destroying blocks that create shorter paths
-        breakdown.distanceShaping = Double(distanceToExitDelta) * 0.05
+        // One-directional: only reward for getting closer, no penalty for moving away
+        // This prevents oscillation reward farming (left-right-left-right)
+        breakdown.distanceShaping = Double(max(distanceToExitDelta, 0)) * 0.05
 
         // 5. VICTORY BONUSES (massive rewards for winning)
         if gameWon {

@@ -7,6 +7,12 @@ import jax.numpy as jnp
 
 from .state import STAGE_COMPLETION_REWARDS, EnvState
 
+# Distance shaping coefficient (reward per cell closer to exit)
+DISTANCE_SHAPING_COEF = 0.05
+
+# Per-step penalty to create time pressure and discourage oscillation
+STEP_PENALTY = -0.01
+
 
 def calculate_reward(
     state: EnvState,
@@ -17,16 +23,19 @@ def calculate_reward(
     """Calculate reward for this transition.
 
     Rewards:
+    - Step penalty: -0.01 per step (creates time pressure, discourages oscillation)
     - Stage completion: [1, 2, 4, 8, 16, 32, 64, 100]
     - Score gain: delta * 0.5
     - Kill: 0.3 per enemy killed
     - Data siphon collection: 1.0
+    - Distance shaping: +0.05 per cell closer to exit (one-directional, no penalty for moving away)
     - HP gain: +1.0 per HP
     - HP loss: -1.0 per HP
     - Victory: 500 + score * 100
     - Death: -cumulative * 0.5
     """
-    reward = jnp.float32(0.0)
+    # Start with step penalty (creates urgency to reach exit)
+    reward = jnp.float32(STEP_PENALTY)
 
     # Stage completion reward
     stage_reward = jax.lax.cond(
@@ -56,6 +65,21 @@ def calculate_reward(
     # For simplicity, always reward siphon collection
     siphon_reward = jnp.float32(siphons_collected) * 1.0
     reward = reward + siphon_reward
+
+    # Distance shaping (one-directional: only reward getting closer, no penalty for moving away)
+    # This prevents the agent from "farming" reward by oscillating back and forth
+    prev_distance = (
+        jnp.abs(state.previous_player.row - state.exit_row)
+        + jnp.abs(state.previous_player.col - state.exit_col)
+    )
+    curr_distance = (
+        jnp.abs(state.player.row - state.exit_row)
+        + jnp.abs(state.player.col - state.exit_col)
+    )
+    distance_delta = prev_distance - curr_distance  # Positive if moved closer
+    # Only reward positive progress (moved closer), ignore moving away
+    distance_reward = jnp.maximum(distance_delta, 0) * DISTANCE_SHAPING_COEF
+    reward = reward + jnp.float32(distance_reward)
 
     # HP change
     hp_delta = state.player.hp - state.prev_hp

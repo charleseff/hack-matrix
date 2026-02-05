@@ -20,13 +20,15 @@ python3 scripts/train_purejaxrl.py \
   --total-timesteps 100000000 \
   --num-envs 2048 \
   --num-steps 128 \
+  --lr 1.25e-4 \
   --checkpoint-dir checkpoints
 ```
 
 **Notes:**
 - Wandb logging is enabled by default (disable with `--no-wandb`)
-- `num_minibatches` auto-scales with batch size to maintain consistent training dynamics
-- Override auto-scaling by explicitly setting `--num-minibatches N`
+- `num_minibatches` and `update_epochs` auto-scale with batch size to maintain consistent training dynamics
+- Use `--lr 1.25e-4` for large batches (half the default) — compensates for 2x gradient steps
+- Override auto-scaling by explicitly setting `--num-minibatches N` or `--update-epochs N`
 
 **Checkpointing:**
 - Saves every 10 minutes (override: `--save-interval-minutes N` or `--save-interval N` for update-based)
@@ -79,19 +81,55 @@ This is implemented in `auto_scale_for_batch_size()` and called automatically wh
 
 ## Learning Rate Findings
 
-**Use `--lr 2.5e-4` (default) with auto-scaled minibatches.**
+**Use `--lr 1.25e-4` with auto-scaled batch parameters (2048 envs).**
 
-### Feb 4 Experiments (2048 envs, 262k batch)
+### Experiment History
 
-| LR | num_minibatches | Result |
-|----|-----------------|--------|
-| 2.5e-4 | 4 (default) | KL rose to 0.09, clip to 0.38, return degraded |
-| 1.25e-4 | 4 (default) | Healthy metrics but stagnant at -1.65 return |
-| 2.5e-4 | 32 (auto-scaled) | **Testing** |
+| Date | LR | Config | Result |
+|------|-----|--------|--------|
+| Feb 4 | 2.5e-4 | 4 minibatches, 4 epochs | KL 0.09+, clip 0.38+, degraded |
+| Feb 4 | 1.25e-4 | 4 minibatches, 4 epochs | Healthy metrics, stagnant -1.65 |
+| Feb 4 | 2.5e-4 | 32 minibatches, 4 epochs | KL 0.10+, clip 0.45+, degraded |
+| Feb 5 | 2.5e-4 | 32 minibatches, 1 epoch | Early healthy, degraded by update 150 |
+| Feb 5 | 1.25e-4 | 32 minibatches, 1 epoch | **Healthy metrics, testing reward fixes** |
+
+**Key insight:** With 32 gradient steps (vs 16 baseline), halving LR compensates for the 2x policy change.
 
 **Signs of LR too high:** KL > 0.08, clip fraction > 0.35, entropy collapse, oscillating reward.
 
-**Healthy metrics:** KL ~0.05-0.06, clip fraction ~0.22-0.30, entropy stable or increasing.
+**Healthy metrics:** KL ~0.03-0.05, clip fraction ~0.20-0.25, entropy stable or increasing.
+
+## Reward Function Fixes (Feb 5)
+
+### The Oscillation Problem
+
+Even with healthy PPO metrics, the agent learned to oscillate left-right forever:
+- `mean_episode_length` kept increasing (17 → 20+)
+- `mean_episode_return` flatlined (~-1.35)
+- Agent survives but never reaches the exit
+
+**Root cause:** No cost to stalling. The agent found a "safe" policy that avoids death without making progress.
+
+### Fix 1: One-Directional Distance Shaping
+
+Changed from bidirectional to one-directional:
+```
+Before: +0.05 for closer, -0.05 for farther (oscillation = 0 net)
+After:  +0.05 for closer, 0.00 for farther (can't farm by oscillating)
+```
+
+### Fix 2: Step Penalty
+
+Added `-0.01` per step to create time pressure:
+```
+Move toward exit:  +0.05 - 0.01 = +0.04
+Move away:          0.00 - 0.01 = -0.01
+Oscillate 100x:                  = -1.00 penalty
+```
+
+The fastest path to the exit is now optimal. Stalling bleeds reward.
+
+**Implementation:** Both fixes applied to `rewards.py` (JAX) and `RewardCalculator.swift`.
 
 ## Optimizations
 
@@ -127,9 +165,12 @@ Wandb project: `hackmatrix`
 | Metric | Healthy Range | Problem Sign |
 |--------|---------------|--------------|
 | `mean_episode_return` | Trending up | Flat/oscillating |
+| `mean_episode_length` | Stable or decreasing | Continuously increasing (oscillation) |
 | `entropy` | Stable or increasing | Collapse to 0 |
 | `approx_kl` | 0.01-0.06 | > 0.08 |
 | `clip_fraction` | < 0.30 | > 0.35 |
+
+**Oscillation Detection:** If `mean_episode_length` keeps rising but `mean_episode_return` flatlines, the agent is stalling (moving left-right forever) instead of progressing to the exit.
 
 ## Remote Access
 
@@ -162,8 +203,15 @@ python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
 - [x] Identify large-batch training degradation issue
 - [x] Implement `auto_scale_for_batch_size()` — scale `num_minibatches`
 - [x] Extend auto-scaling to also scale `update_epochs` (fix gradient steps)
-- [ ] **Verify complete auto-scaling fix produces good training**
+- [x] Lower LR to 1.25e-4 for 2x gradient steps
+- [ ] **Verify PPO metrics stay healthy through full training**
 - [ ] Benchmark throughput improvement
+
+### Phase 1b: Reward Function Fixes
+- [x] Identify oscillation problem (agent stalls instead of progressing)
+- [x] Implement one-directional distance shaping (JAX + Swift)
+- [x] Implement step penalty -0.01 (JAX + Swift)
+- [ ] **Verify agent learns to reach exit instead of oscillating**
 
 ### Phase 2: Larger TPU
 - [ ] Test v4-16 with current code
@@ -180,12 +228,21 @@ python scripts/watch_jax_agent.py checkpoints/checkpoint.pkl
 - [ ] 100M timesteps in < 2 hours
 - [ ] Training stability: KL < 0.06, clip_fraction < 0.30
 - [ ] Return reaches -1.55 or better (matching 256-env baseline)
-- [ ] `watch_jax_agent.py` works with checkpoint
+- [ ] Episode length stabilizes (not continuously increasing = no oscillation)
+- [ ] `watch_jax_agent.py` shows agent reaching exit, not oscillating
 
 ## Appendix: Key Learnings
 
+### PPO Scaling
 1. **Don't resume across batch size changes** — Optimizer state becomes miscalibrated
 2. **Minibatch size matters more than batch size** — Gradient noise helps exploration
 3. **Gradient steps matter as much as minibatch size** — More steps = larger policy change per update
 4. **PPO doesn't follow linear LR scaling** — Larger batches need same or lower LR
 5. **Auto-scaling must adjust both dimensions** — Scale `num_minibatches` up AND `update_epochs` down
+6. **LR scales inversely with gradient steps** — 2x steps → 0.5x LR
+
+### Reward Shaping
+7. **Bidirectional shaping enables reward hacking** — Agent can oscillate for zero net reward
+8. **One-directional shaping removes equilibrium** — Only progress gives reward, but no cost to stall
+9. **Step penalty creates urgency** — Small per-step cost makes stalling expensive
+10. **Watch episode length vs return** — If length rises but return flatlines, agent is stalling
