@@ -130,7 +130,7 @@ def step(
     done = player_died | game_won
 
     # Calculate reward
-    reward = calculate_reward(state, stage_complete, game_won, player_died)
+    reward = calculate_reward(state, stage_complete, game_won, player_died, action)
     state = state.replace(cumulative_reward=state.cumulative_reward + reward)
 
     obs = get_observation(state)

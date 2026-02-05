@@ -217,9 +217,11 @@ Swift responds with JSON on stdout:
 # macOS (activate venv first)
 cd python && source venv-macos/bin/activate && pytest tests/ -v
 
-# Dev container (venv auto-activated)
-pytest python/tests/ -v
+# Dev container (venv auto-activated, must activate explicitly if not)
+source python/venv-linux/bin/activate && JAX_PLATFORMS=cpu python -m pytest python/tests/ -v
 ```
+
+**Note:** `JAX_PLATFORMS=cpu` is required when TPU is occupied by a training process.
 
 ### Key Files
 
