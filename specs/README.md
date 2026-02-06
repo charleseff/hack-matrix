@@ -6,7 +6,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 ## Current Focus
 
-**Active spec:** [training-speedups.md](./training-speedups.md) - TPU training on Google TRC (10x speedup target)
+**Active spec:** [jax-training-metrics.md](./jax-training-metrics.md) - Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -14,6 +14,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 | Spec | Status | Description |
 |------|--------|-------------|
+| [jax-training-metrics.md](./jax-training-metrics.md) | **Active** | Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging |
 | [training-speedups.md](./training-speedups.md) | **Active** | TPU training on Google TRC (10x speedup target) |
 | [reward-parity.md](./reward-parity.md) | **Complete** | JAX reward parity with Swift RewardCalculator (5 missing components + 2 fixes) |
 | [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training |
@@ -31,7 +32,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 ## Usage
 
-Before starting a major feature or architectural change, create a spec document here.
+Before starting a major feature or architectural change, create a spec document here. Do not create an implementation plan as part of the spec. The spec is the "what", the implementation plan is the "how". The implementation plan will be created as the next step based on the information in the spec.
 
 **Status lifecycle:**
 - **Draft** - Spec needs further discussion before implementation
