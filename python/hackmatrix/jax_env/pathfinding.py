@@ -12,8 +12,10 @@ Why BFS over Manhattan:
   BFS accounts for actual walkable paths, matching Swift's pathfinding exactly.
 
 JIT strategy:
-  Fixed-size queue (36 entries = all cells), head/tail pointers, visited mask
-  as a flat boolean array. Uses jax.lax.while_loop with bounded iteration.
+  Wavefront expansion using jax.lax.scan with fixed iteration count.
+  Each iteration expands the frontier one BFS layer using grid-level array ops
+  (pad + slice for cardinal shifts). No dynamic queue indexing, no while_loop.
+  Compiles much faster than queue-based BFS under vmap.
 """
 
 import jax
@@ -21,13 +23,8 @@ import jax.numpy as jnp
 
 from .state import GRID_SIZE
 
-# Total cells on the grid (maximum BFS queue size)
-_NUM_CELLS = GRID_SIZE * GRID_SIZE  # 36
-
-# Cardinal direction offsets: up, down, left, right
-_DIRECTION_OFFSETS = jnp.array(
-    [[1, 0], [-1, 0], [0, -1], [0, 1]], dtype=jnp.int32
-)
+# Maximum BFS depth on grid (all cells minus start)
+_MAX_BFS_DEPTH = GRID_SIZE * GRID_SIZE - 1  # 35
 
 
 def bfs_distance(
@@ -53,87 +50,29 @@ def bfs_distance(
       (Swift checks target match before block check)
     - Cardinal movement only (up, down, left, right)
     """
-    # Early return: start == target
-    same_pos = (start_row == target_row) & (start_col == target_col)
+    # Obstacle mask: blocks impede movement, but target is always reachable
+    obstacles = (grid_block_type != 0).at[target_row, target_col].set(False)
 
-    # BFS state: queue of (row, col) pairs, distance array, visited mask
-    # Queue: fixed-size array of flat indices, with head/tail pointers
-    # Distance: per-cell distance from start
-    queue = jnp.zeros(_NUM_CELLS, dtype=jnp.int32)
-    distances = jnp.full(_NUM_CELLS, -1, dtype=jnp.int32)
-    visited = jnp.zeros(_NUM_CELLS, dtype=jnp.bool_)
+    # Distance grid: -1 = unvisited, 0 = start
+    dist = jnp.full((GRID_SIZE, GRID_SIZE), -1, dtype=jnp.int32).at[start_row, start_col].set(0)
+    frontier = jnp.zeros((GRID_SIZE, GRID_SIZE), dtype=jnp.bool_).at[start_row, start_col].set(True)
 
-    start_idx = start_row * GRID_SIZE + start_col
-    queue = queue.at[0].set(start_idx)
-    distances = distances.at[start_idx].set(0)
-    visited = visited.at[start_idx].set(True)
-
-    target_idx = target_row * GRID_SIZE + target_col
-
-    # BFS loop state: (queue, distances, visited, head, tail, found, result)
-    init_state = (queue, distances, visited, jnp.int32(0), jnp.int32(1), jnp.bool_(False), jnp.int32(-1))
-
-    def cond_fn(loop_state):
-        _queue, _distances, _visited, head, tail, found, _result = loop_state
-        return (head < tail) & ~found
-
-    def body_fn(loop_state):
-        queue, distances, visited, head, tail, found, result = loop_state
-
-        # Dequeue current cell
-        current_idx = queue[head]
-        current_row = current_idx // GRID_SIZE
-        current_col = current_idx % GRID_SIZE
-        current_dist = distances[current_idx]
-        head = head + 1
-
-        # Explore 4 cardinal neighbors
-        def process_neighbor(carry, direction):
-            queue, distances, visited, tail, found, result = carry
-            new_row = current_row + direction[0]
-            new_col = current_col + direction[1]
-            new_idx = new_row * GRID_SIZE + new_col
-
-            in_bounds = (new_row >= 0) & (new_row < GRID_SIZE) & (new_col >= 0) & (new_col < GRID_SIZE)
-            not_visited = ~visited[jnp.clip(new_idx, 0, _NUM_CELLS - 1)]
-            valid = in_bounds & not_visited & ~found
-
-            # Check if this neighbor IS the target (checked before block check, matching Swift)
-            is_target = (new_row == target_row) & (new_col == target_col)
-            found_target = valid & is_target
-
-            # Block check: only blocks movement to non-target cells
-            is_blocked = grid_block_type[
-                jnp.clip(new_row, 0, GRID_SIZE - 1),
-                jnp.clip(new_col, 0, GRID_SIZE - 1),
-            ] != 0
-            can_enqueue = valid & ~is_target & ~is_blocked
-
-            # Update result if target found
-            new_dist = current_dist + 1
-            result = jnp.where(found_target, new_dist, result)
-            found = found | found_target
-
-            # Enqueue neighbor if walkable and not target
-            safe_idx = jnp.clip(new_idx, 0, _NUM_CELLS - 1)
-            queue = jnp.where(can_enqueue, queue.at[tail].set(safe_idx), queue)
-            distances = jnp.where(can_enqueue, distances.at[safe_idx].set(new_dist), distances)
-            visited = jnp.where(can_enqueue, visited.at[safe_idx].set(True), visited)
-            tail = jnp.where(can_enqueue, tail + 1, tail)
-
-            return (queue, distances, visited, tail, found, result), None
-
-        (queue, distances, visited, tail, found, result), _ = jax.lax.scan(
-            process_neighbor,
-            (queue, distances, visited, tail, found, result),
-            _DIRECTION_OFFSETS,
+    def expand_wave(carry, step_num):
+        dist, frontier = carry
+        # Expand frontier to cardinal neighbors via padding + slicing
+        padded = jnp.pad(frontier, 1, constant_values=False)
+        neighbors = (
+            padded[2:, 1:-1]    # cell above was in frontier
+            | padded[:-2, 1:-1]  # cell below was in frontier
+            | padded[1:-1, 2:]   # cell left was in frontier
+            | padded[1:-1, :-2]  # cell right was in frontier
         )
+        new_frontier = neighbors & (dist == -1) & ~obstacles
+        dist = jnp.where(new_frontier, step_num, dist)
+        return (dist, new_frontier), None
 
-        return (queue, distances, visited, head, tail, found, result)
-
-    _queue, _distances, _visited, _head, _tail, _found, result = jax.lax.while_loop(
-        cond_fn, body_fn, init_state
+    (dist, _), _ = jax.lax.scan(
+        expand_wave, (dist, frontier), jnp.arange(1, _MAX_BFS_DEPTH + 1)
     )
 
-    # same_pos → 0, otherwise BFS result (which is -1 if not found)
-    return jnp.where(same_pos, jnp.int32(0), result)
+    return dist[target_row, target_col]
