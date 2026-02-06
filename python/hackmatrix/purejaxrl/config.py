@@ -32,7 +32,7 @@ class TrainConfig:
     update_epochs: int = 4
     clip_eps: float = 0.2  # PPO clipping epsilon
     vf_coef: float = 0.5  # Value function loss coefficient
-    ent_coef: float = 0.1  # Entropy bonus (0.1+ prevents collapse)
+    ent_coef: float = 0.15  # Entropy bonus (maintains exploration of rare actions)
     max_grad_norm: float = 0.5  # Gradient clipping
 
     # Network architecture
@@ -124,7 +124,9 @@ def auto_scale_for_batch_size(config: TrainConfig) -> TrainConfig:
     With this auto-scaling for num_envs=2048:
         - batch_size=262,144 (8x larger)
         - num_minibatches=32 (scaled 8x) -> minibatch_size=8,192 (preserved!)
-        - update_epochs=1 (scaled down) -> 32 gradient steps (only 2x, acceptable)
+        - update_epochs=2 (floor) -> 64 gradient steps (4x reference)
+        The epoch floor of 2 ensures rare strategic events get at least 2
+        gradient passes before data is discarded.
 
     Args:
         config: Base configuration
@@ -154,9 +156,10 @@ def auto_scale_for_batch_size(config: TrainConfig) -> TrainConfig:
     new_num_minibatches = min(new_num_minibatches, 64)
 
     # Scale update_epochs DOWN to maintain reasonable gradient steps
-    # With 32 minibatches and 1 epoch: 32 gradient steps (2x reference, acceptable)
-    # Minimum 1 epoch required
-    new_update_epochs = max(1, config.update_epochs // scale_factor)
+    # With 32 minibatches and 2 epochs: 64 gradient steps (4x reference)
+    # Floor at 2 epochs: rare events (siphon/program decisions) need at least
+    # 2 passes over the data to reinforce sparse signals before discarding.
+    new_update_epochs = max(2, config.update_epochs // scale_factor)
 
     new_minibatch_size = current_batch_size // new_num_minibatches
     new_gradient_steps = new_num_minibatches * new_update_epochs

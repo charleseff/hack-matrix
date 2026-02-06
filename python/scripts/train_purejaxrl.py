@@ -96,7 +96,7 @@ def parse_args():
     parser.add_argument("--clip-eps", type=float, default=0.2, help="PPO clip epsilon")
     parser.add_argument("--vf-coef", type=float, default=0.5, help="Value loss coef")
     parser.add_argument(
-        "--ent-coef", type=float, default=0.1, help="Entropy coef (0.1+ recommended)"
+        "--ent-coef", type=float, default=0.15, help="Entropy coef (0.15 maintains exploration)"
     )
     parser.add_argument("--max-grad-norm", type=float, default=0.5, help="Max gradient norm")
 

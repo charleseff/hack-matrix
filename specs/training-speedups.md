@@ -20,14 +20,16 @@ python3 scripts/train_purejaxrl.py \
   --total-timesteps 100000000 \
   --num-envs 2048 \
   --num-steps 128 \
-  --lr 1.25e-4 \
+  --lr 6.25e-5 \
+  --ent-coef 0.15 \
   --checkpoint-dir checkpoints
 ```
 
 **Notes:**
 - Wandb logging is enabled by default (disable with `--no-wandb`)
 - `num_minibatches` and `update_epochs` auto-scale with batch size to maintain consistent training dynamics
-- Use `--lr 1.25e-4` for large batches (half the default) — compensates for 2x gradient steps
+- Use `--lr 6.25e-5` for large batches (quarter default) — compensates for 4x gradient steps with epoch floor 2
+- `--ent-coef 0.15` maintains exploration of rare actions (siphon, programs) that would otherwise be pruned by entropy collapse
 - Override auto-scaling by explicitly setting `--num-minibatches N` or `--update-epochs N`
 
 **Checkpointing:**
@@ -64,9 +66,11 @@ For num_envs=2048:
   batch_size: 262,144 (8x reference)
   num_minibatches: 4 -> 32 (scaled up)
   minibatch_size: 65,536 -> 8,192 (preserved!)
-  update_epochs: 4 -> 1 (scaled down)
-  gradient_steps: 16 -> 32 (only 2x, acceptable)
+  update_epochs: 4 -> 2 (scaled down, floor=2)
+  gradient_steps: 16 -> 64 (4x reference)
 ```
+
+The epoch floor of 2 ensures rare strategic events (siphon/program decisions) get at least 2 gradient passes over the data before it's discarded. With `--lr 6.25e-5`, the per-update policy change stays bounded.
 
 This is implemented in `auto_scale_for_batch_size()` and called automatically when using default settings.
 
@@ -136,7 +140,8 @@ The fastest path to the exit is now optimal. Stalling bleeds reward.
 ### 1. Auto-Scaled Batch Parameters (Critical for Large Batches)
 Automatically enabled when using default settings. Maintains:
 - ~8,192 minibatch_size (scales `num_minibatches` up)
-- ~32 gradient steps (scales `update_epochs` down)
+- Epoch floor of 2 (rare events get 2 passes minimum)
+- ~64 gradient steps at 2048 envs (compensated by halved LR)
 
 ### 2. Parallel Environments (High Impact)
 `--num-envs 2048` — TPU v4-8 underutilized at 256. 8x envs ≈ 7x throughput.
