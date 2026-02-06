@@ -1,6 +1,6 @@
 # Reward Parity Spec
 
-**Status:** Draft
+**Status:** Complete
 **Depends on:** [game-mechanics.md](./game-mechanics.md), [jax-implementation.md](./jax-implementation.md)
 
 ## Goal
