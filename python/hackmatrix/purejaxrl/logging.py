@@ -199,7 +199,12 @@ class TrainingLogger:
             else:
                 import wandb
 
-                wandb_metrics = {f"{prefix}/{k}": v for k, v in metrics.items()}
+                # Pre-prefixed keys (containing '/') pass through as-is to avoid
+                # double-nesting like train/reward/kills. Unprefixed keys get prefix/.
+                wandb_metrics = {
+                    k if "/" in k else f"{prefix}/{k}": v
+                    for k, v in metrics.items()
+                }
                 wandb_metrics[f"{prefix}/updates_per_second"] = sps
                 wandb_metrics[f"{prefix}/update_step"] = step
 

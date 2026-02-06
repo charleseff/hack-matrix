@@ -112,7 +112,7 @@ class HackMatrixGymnax:
             info: Dictionary with additional info
         """
         key, step_key = jax.random.split(key)
-        env_state, obs, reward, done = jax_step(state.env_state, action, step_key)
+        env_state, obs, reward, done, breakdown = jax_step(state.env_state, action, step_key)
 
         flat_obs = self._flatten_obs(obs)
         new_state = GymnaxEnvState(env_state=env_state, key=key)
@@ -121,6 +121,7 @@ class HackMatrixGymnax:
             "stage": env_state.stage,
             "score": env_state.player.score,
             "hp": env_state.player.hp,
+            **breakdown,
         }
 
         return flat_obs, new_state, reward, done, info

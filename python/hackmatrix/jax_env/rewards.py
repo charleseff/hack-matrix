@@ -1,7 +1,7 @@
 """
 Reward calculation for HackMatrix JAX environment.
 
-Implements all 14 reward components matching Swift RewardCalculator.swift:
+Implements all 15 reward components matching Swift RewardCalculator.swift:
 - Step penalty, stage completion, score gain, kills, data siphon collection
 - Distance shaping (BFS pathfinding), HP change, victory bonus, death penalty
 - Siphon-caused death penalty (extra -10.0 for dying to siphon-spawned enemy)
@@ -53,56 +53,58 @@ def calculate_reward(
     game_won: jnp.bool_,
     player_died: jnp.bool_,
     action: jnp.int32,
-) -> jnp.float32:
-    """Calculate reward for this transition.
+) -> tuple[jnp.float32, dict[str, jnp.float32]]:
+    """Calculate reward for this transition, returning total and per-component breakdown.
 
     Matches Swift RewardCalculator.calculate() for full parity.
+    Returns (total_reward, breakdown_dict) where breakdown_dict has 15 keys
+    that sum to total_reward.
 
-    Rewards:
-    - Step penalty: -0.01 per step
-    - Stage completion: [1, 2, 4, 8, 16, 32, 64, 100]
-    - Score gain: delta * 0.5
-    - Kill: 0.3 per enemy killed
-    - Data siphon collection: 1.0
-    - Distance shaping: +0.05 per cell closer to exit (one-directional)
-    - HP change: +1.0/-1.0 per HP gained/lost
-    - Victory: 500 + score * 100
-    - Death penalty: -0.5 * sum(stage rewards for completed stages)
-    - Siphon death: extra -10.0 when dying to a cardinally adjacent siphon-spawned enemy
-    - Resource gain: credits_delta * 0.05 + energy_delta * 0.05
-    - Resource holding: (credits * 0.01 + energy * 0.01) on stage completion
-    - Program waste: -0.3 for RESET at 2 HP
-    - Siphon quality: -0.5 * (missed_credits * 0.05 + missed_energy * 0.05)
+    Breakdown keys:
+    - step_penalty: -0.01 per step
+    - stage_completion: [1, 2, 4, 8, 16, 32, 64, 100]
+    - score_gain: delta * 0.5
+    - kills: 0.3 per enemy killed
+    - data_siphon: 1.0 per siphon collected
+    - distance_shaping: +0.05 per cell closer to exit (one-directional)
+    - damage_penalty: -1.0 per HP lost (negative part of hp_delta)
+    - hp_recovery: +1.0 per HP gained (positive part of hp_delta)
+    - victory: 500 + score * 100
+    - death_penalty: -0.5 * sum(stage rewards for completed stages)
+    - siphon_death_penalty: extra -10.0 for dying to siphon-spawned enemy
+    - resource_gain: credits_delta * 0.05 + energy_delta * 0.05
+    - resource_holding: (credits * 0.01 + energy * 0.01) on stage completion
+    - program_waste: -0.3 for RESET at 2 HP
+    - siphon_quality: -0.5 * (missed_credits * 0.05 + missed_energy * 0.05)
     """
-    # Start with step penalty (creates urgency to reach exit)
-    reward = jnp.float32(STEP_PENALTY)
+    # Step penalty (creates urgency to reach exit)
+    step_penalty = jnp.float32(STEP_PENALTY)
 
     # Stage completion reward
     # stage was already incremented by advance_stage, so -2 to get the completed stage index.
     # Guard: stage must be 2-9 after increment (completed stages 1-8).
     # Stage 9 means stage 8 was just completed (game won).
-    stage_reward = jax.lax.cond(
+    stage_completion = jax.lax.cond(
         stage_completed & (state.stage >= 2) & (state.stage <= 9),
         lambda: STAGE_COMPLETION_REWARDS[state.stage - 2],
         lambda: jnp.float32(0.0),
     )
-    reward = reward + stage_reward
 
     # Score gain reward (0.5 per point)
     score_delta = state.player.score - state.prev_score
-    reward = reward + jnp.float32(score_delta) * 0.5
+    score_gain = jnp.float32(score_delta) * 0.5
 
     # Kill reward (0.3 per kill)
     prev_enemy_count = jnp.sum(state.previous_enemy_mask.astype(jnp.int32))
     curr_enemy_count = jnp.sum(state.enemy_mask.astype(jnp.int32))
-    kills = jnp.maximum(prev_enemy_count - curr_enemy_count, 0)
-    reward = reward + jnp.float32(kills) * 0.3
+    kills_count = jnp.maximum(prev_enemy_count - curr_enemy_count, 0)
+    kills = jnp.float32(kills_count) * 0.3
 
     # Data siphon collection reward (1.0)
     prev_siphons = state.previous_player.data_siphons
     curr_siphons = state.player.data_siphons
     siphons_collected = jnp.maximum(curr_siphons - prev_siphons, 0)
-    reward = reward + jnp.float32(siphons_collected) * 1.0
+    data_siphon = jnp.float32(siphons_collected) * 1.0
 
     # Distance shaping via BFS (one-directional: only reward getting closer)
     # prev_distance was pre-computed before the action in save_previous_state
@@ -116,20 +118,20 @@ def calculate_reward(
     )
     curr_distance = jnp.where(curr_bfs < 0, jnp.int32(0), curr_bfs)
     distance_delta = prev_distance - curr_distance  # Positive if moved closer
-    distance_reward = jnp.maximum(distance_delta, 0) * DISTANCE_SHAPING_COEF
-    reward = reward + jnp.float32(distance_reward)
+    distance_shaping = jnp.float32(jnp.maximum(distance_delta, 0) * DISTANCE_SHAPING_COEF)
 
-    # HP change (damage penalty -1.0/HP, recovery reward +1.0/HP)
+    # HP change — split into damage_penalty (negative) and hp_recovery (positive)
+    # Total HP reward = hp_delta * 1.0 = damage_penalty + hp_recovery
     hp_delta = state.player.hp - state.prev_hp
-    reward = reward + jnp.float32(hp_delta) * 1.0
+    damage_penalty = jnp.float32(jnp.minimum(hp_delta, 0)) * 1.0
+    hp_recovery = jnp.float32(jnp.maximum(hp_delta, 0)) * 1.0
 
     # Victory bonus
-    victory_bonus = jax.lax.cond(
+    victory = jax.lax.cond(
         game_won,
         lambda: 500.0 + jnp.float32(state.player.score) * 100.0,
         lambda: jnp.float32(0.0),
     )
-    reward = reward + victory_bonus
 
     # Death penalty: -0.5 * cumulative stage rewards for completed stages
     # Swift: for i in 0..<(currentStage - 1) { cumulativeReward += stageRewards[i] }
@@ -140,17 +142,15 @@ def calculate_reward(
         lambda: _stage_death_penalty(state.stage),
         lambda: jnp.float32(0.0),
     )
-    reward = reward + death_penalty
 
     # Siphon-caused death penalty: extra -10.0 when dying to siphon-spawned enemy
     # Swift: scan enemies for any adjacent to player with spawnedFromSiphon == true
     # Adjacent = cardinal only (Manhattan distance 1, not diagonal)
-    siphon_death = jnp.where(
+    siphon_death_penalty = jnp.where(
         player_died & _any_adjacent_siphon_enemy(state),
         jnp.float32(SIPHON_CAUSED_DEATH_PENALTY),
         jnp.float32(0.0),
     )
-    reward = reward + siphon_death
 
     # Resource gain reward: credits_delta * 0.05 + energy_delta * 0.05
     credits_delta = state.player.credits - state.prev_credits
@@ -159,7 +159,6 @@ def calculate_reward(
         jnp.float32(credits_delta) * CREDIT_GAIN_MULTIPLIER
         + jnp.float32(energy_delta) * ENERGY_GAIN_MULTIPLIER
     )
-    reward = reward + resource_gain
 
     # Resource holding bonus (only on stage completion)
     resource_holding = jax.lax.cond(
@@ -170,7 +169,6 @@ def calculate_reward(
         ),
         lambda: jnp.float32(0.0),
     )
-    reward = reward + resource_holding
 
     # Program waste penalty: RESET at 2 HP wastes 1 HP (max is 3, only gains 1 instead of 2)
     is_reset_action = action == ACTION_RESET
@@ -180,7 +178,6 @@ def calculate_reward(
         jnp.float32(RESET_AT_2HP_PENALTY),
         jnp.float32(0.0),
     )
-    reward = reward + program_waste
 
     # Siphon quality penalty: penalize suboptimal siphon positioning.
     # Pre-computed in env.py before the action modifies grid state.
@@ -195,9 +192,34 @@ def calculate_reward(
         jnp.float32(SIPHON_SUBOPTIMAL_PENALTY) * missed_value,
         jnp.float32(0.0),
     )
-    reward = reward + siphon_quality
 
-    return reward
+    # Sum all components
+    total = (
+        step_penalty + stage_completion + score_gain + kills + data_siphon
+        + distance_shaping + damage_penalty + hp_recovery + victory
+        + death_penalty + siphon_death_penalty + resource_gain
+        + resource_holding + program_waste + siphon_quality
+    )
+
+    breakdown = {
+        "step_penalty": step_penalty,
+        "stage_completion": stage_completion,
+        "score_gain": score_gain,
+        "kills": kills,
+        "data_siphon": data_siphon,
+        "distance_shaping": distance_shaping,
+        "damage_penalty": damage_penalty,
+        "hp_recovery": hp_recovery,
+        "victory": victory,
+        "death_penalty": death_penalty,
+        "siphon_death_penalty": siphon_death_penalty,
+        "resource_gain": resource_gain,
+        "resource_holding": resource_holding,
+        "program_waste": program_waste,
+        "siphon_quality": siphon_quality,
+    }
+
+    return total, breakdown
 
 
 def _any_adjacent_siphon_enemy(state: EnvState) -> jnp.bool_:

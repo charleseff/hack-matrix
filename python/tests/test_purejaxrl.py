@@ -507,5 +507,65 @@ class TestGradientSanity:
             f"Value loss should primarily affect critic: actor={actor_grad_norm}, critic={critic_grad_norm}"
 
 
+class TestTrainingMetrics:
+    """Verify reward breakdown and action metrics appear in training output.
+
+    This integration test runs 1 chunk of training and checks that all
+    expected metric keys are present — the pipeline from calculate_reward
+    through the scan, aggregation, and into the metrics dict.
+    """
+
+    def test_training_metrics_contain_breakdown_and_actions(self):
+        """After 1 training chunk, metrics dict has reward/, actions/, stats/ keys."""
+        config = TrainConfig(
+            num_envs=4,
+            num_steps=8,
+            total_timesteps=32,
+            num_minibatches=2,
+            update_epochs=1,
+            hidden_dim=32,
+            num_layers=1,
+        )
+
+        env = HackMatrixGymnax()
+        train_fn = make_chunked_train(config, env)
+        key = jax.random.PRNGKey(0)
+        _final_state, metrics, _ = train_fn(key)
+
+        # All 15 reward breakdown keys must be present
+        breakdown_keys = [
+            "reward/step_penalty", "reward/stage_completion", "reward/score_gain",
+            "reward/kills", "reward/data_siphon", "reward/distance_shaping",
+            "reward/damage_penalty", "reward/hp_recovery", "reward/victory",
+            "reward/death_penalty", "reward/siphon_death_penalty",
+            "reward/resource_gain", "reward/resource_holding",
+            "reward/program_waste", "reward/siphon_quality",
+        ]
+        for k in breakdown_keys:
+            assert k in metrics, f"Missing metric '{k}' in training metrics"
+            assert jnp.isfinite(metrics[k]).all(), f"Non-finite values in '{k}'"
+
+        # Action fraction metrics
+        assert "actions/move_frac" in metrics
+        assert "actions/siphon_frac" in metrics
+        assert "actions/program_frac" in metrics
+
+        # Action fractions should sum to 1.0
+        fracs = (
+            metrics["actions/move_frac"].mean()
+            + metrics["actions/siphon_frac"].mean()
+            + metrics["actions/program_frac"].mean()
+        )
+        assert jnp.allclose(fracs, 1.0, atol=1e-5), f"Action fractions sum to {fracs}, not 1.0"
+
+        # Stats
+        assert "stats/highest_stage" in metrics
+
+        # step_penalty should be consistently ~-0.01 (sanity check)
+        assert jnp.allclose(
+            metrics["reward/step_penalty"].mean(), -0.01, atol=1e-3,
+        ), f"step_penalty={metrics['reward/step_penalty'].mean()}, expected ~-0.01"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

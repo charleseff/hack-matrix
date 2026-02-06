@@ -8,7 +8,7 @@ Usage:
 
     key = jax.random.PRNGKey(0)
     state, obs = reset(key)
-    state, obs, reward, done = step(state, action, key)
+    state, obs, reward, done, breakdown = step(state, action, key)
     valid_actions = get_valid_actions(state)
 """
 

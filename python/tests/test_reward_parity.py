@@ -143,16 +143,27 @@ def _make_state(**overrides):
 
 
 def _reward(state, *, stage_completed=False, game_won=False, player_died=False, action=0):
-    """Call calculate_reward with keyword-friendly booleans."""
-    return float(
-        calculate_reward(
-            state,
-            jnp.bool_(stage_completed),
-            jnp.bool_(game_won),
-            jnp.bool_(player_died),
-            jnp.int32(action),
-        )
+    """Call calculate_reward with keyword-friendly booleans. Returns total reward scalar."""
+    total, _breakdown = calculate_reward(
+        state,
+        jnp.bool_(stage_completed),
+        jnp.bool_(game_won),
+        jnp.bool_(player_died),
+        jnp.int32(action),
     )
+    return float(total)
+
+
+def _reward_with_breakdown(state, *, stage_completed=False, game_won=False, player_died=False, action=0):
+    """Call calculate_reward, returning (total, breakdown_dict) for breakdown tests."""
+    total, breakdown = calculate_reward(
+        state,
+        jnp.bool_(stage_completed),
+        jnp.bool_(game_won),
+        jnp.bool_(player_died),
+        jnp.int32(action),
+    )
+    return float(total), {k: float(v) for k, v in breakdown.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -1024,3 +1035,166 @@ class TestSiphonQualityReward:
         )
         r = _reward(state, action=ACTION_SIPHON)
         assert r == pytest.approx(STEP_PENALTY, abs=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# Reward breakdown tests (jax-training-metrics spec)
+# ---------------------------------------------------------------------------
+
+BREAKDOWN_KEYS = [
+    "step_penalty", "stage_completion", "score_gain", "kills",
+    "data_siphon", "distance_shaping", "damage_penalty", "hp_recovery",
+    "victory", "death_penalty", "siphon_death_penalty", "resource_gain",
+    "resource_holding", "program_waste", "siphon_quality",
+]
+
+
+class TestRewardBreakdownKeys:
+    """Verify calculate_reward returns all 15 breakdown keys.
+
+    The breakdown dict enables per-component wandb charts so we can diagnose
+    which reward signals the agent is learning from vs ignoring.
+    """
+
+    def test_all_15_keys_present(self):
+        """Breakdown dict must contain exactly the 15 specified keys."""
+        state = _make_state()
+        _total, breakdown = _reward_with_breakdown(state)
+        assert set(breakdown.keys()) == set(BREAKDOWN_KEYS)
+
+    def test_keys_present_on_death(self):
+        """All 15 keys present even in death scenario (activates death_penalty, siphon_death)."""
+        enemies, mask = _enemies_and_mask([(3, 3, True)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1, stage=2,
+            enemies=enemies, enemy_mask=mask,
+        )
+        _total, breakdown = _reward_with_breakdown(state, player_died=True)
+        assert set(breakdown.keys()) == set(BREAKDOWN_KEYS)
+
+    def test_keys_present_on_victory(self):
+        """All 15 keys present on victory (activates victory bonus)."""
+        state = _make_state(score=10)
+        _total, breakdown = _reward_with_breakdown(state, game_won=True)
+        assert set(breakdown.keys()) == set(BREAKDOWN_KEYS)
+
+
+class TestRewardBreakdownSum:
+    """Verify breakdown values sum to total reward within float tolerance.
+
+    This invariant ensures the breakdown is a faithful decomposition of the
+    total — no reward leaks or double-counting.
+    """
+
+    def test_sum_baseline(self):
+        """Baseline step: breakdown sums to total (just step_penalty)."""
+        state = _make_state()
+        total, breakdown = _reward_with_breakdown(state)
+        assert sum(breakdown.values()) == pytest.approx(total, abs=1e-5)
+
+    def test_sum_with_kills_and_movement(self):
+        """Multiple active components: kills + distance + step_penalty."""
+        prev_mask = jnp.zeros(20, dtype=jnp.bool_).at[0].set(True)
+        curr_mask = jnp.zeros(20, dtype=jnp.bool_)
+        state = _make_state(
+            row=1, col=0, prev_player_row=0, prev_player_col=0,
+            previous_enemy_mask=prev_mask, enemy_mask=curr_mask,
+        )
+        total, breakdown = _reward_with_breakdown(state)
+        assert sum(breakdown.values()) == pytest.approx(total, abs=1e-5)
+
+    def test_sum_stage_completion_with_resources(self):
+        """Stage completion + resource holding + step_penalty."""
+        state = _make_state(stage=3, credits=20, energy=10)
+        total, breakdown = _reward_with_breakdown(state, stage_completed=True)
+        assert sum(breakdown.values()) == pytest.approx(total, abs=1e-5)
+
+    def test_sum_death_with_siphon(self):
+        """Death + siphon death + HP loss: all penalties stack."""
+        enemies, mask = _enemies_and_mask([(3, 3, True)])
+        state = _make_state(
+            row=2, col=3, hp=0, prev_hp=1, stage=4,
+            enemies=enemies, enemy_mask=mask,
+        )
+        total, breakdown = _reward_with_breakdown(state, player_died=True)
+        assert sum(breakdown.values()) == pytest.approx(total, abs=1e-5)
+
+    def test_sum_victory(self):
+        """Victory + score gain breakdown sums correctly."""
+        state = _make_state(score=10, prev_score=5)
+        total, breakdown = _reward_with_breakdown(state, game_won=True)
+        assert sum(breakdown.values()) == pytest.approx(total, abs=1e-5)
+
+    def test_hp_split_matches_original(self):
+        """damage_penalty + hp_recovery must equal hp_delta * 1.0.
+
+        The HP split is cosmetic — the total HP reward is unchanged, just
+        reported as two components for diagnostic visibility.
+        """
+        # Take 2 damage
+        state = _make_state(hp=1, prev_hp=3)
+        _total, breakdown = _reward_with_breakdown(state)
+        assert breakdown["damage_penalty"] == pytest.approx(-2.0, abs=1e-5)
+        assert breakdown["hp_recovery"] == pytest.approx(0.0, abs=1e-5)
+
+        # Heal 2 HP
+        state2 = _make_state(hp=3, prev_hp=1)
+        _total2, breakdown2 = _reward_with_breakdown(state2)
+        assert breakdown2["damage_penalty"] == pytest.approx(0.0, abs=1e-5)
+        assert breakdown2["hp_recovery"] == pytest.approx(2.0, abs=1e-5)
+
+
+class TestBreakdownThroughEnvStep:
+    """Verify env.py step() returns breakdown dict as 5th element.
+
+    This tests the data flow from calculate_reward through the env step
+    function, ensuring the breakdown survives the full step pipeline.
+    """
+
+    def test_step_returns_5_tuple_with_breakdown(self):
+        """env.step() returns (state, obs, reward, done, breakdown)."""
+        from hackmatrix.jax_env.env import reset, step
+
+        key = jax.random.PRNGKey(42)
+        state, _obs = reset(key)
+        key, step_key = jax.random.split(key)
+
+        result = step(state, jnp.int32(0), step_key)
+        assert len(result) == 5, f"Expected 5-tuple, got {len(result)}-tuple"
+
+        _state, _obs, reward, _done, breakdown = result
+        assert isinstance(breakdown, dict)
+        assert set(breakdown.keys()) == set(BREAKDOWN_KEYS)
+        # Breakdown sums to reward
+        breakdown_sum = sum(float(v) for v in breakdown.values())
+        assert breakdown_sum == pytest.approx(float(reward), abs=1e-5)
+
+
+class TestBreakdownThroughWrapper:
+    """Verify env_wrapper includes all breakdown keys in info dict.
+
+    The wrapper is the boundary between the JAX env and the training loop.
+    All 15 breakdown keys must appear in the info dict alongside stage/score/hp.
+    """
+
+    def test_wrapper_info_contains_breakdown(self):
+        """Wrapper step() info dict has stage, score, hp, and all 15 breakdown keys."""
+        from hackmatrix.purejaxrl.env_wrapper import HackMatrixGymnax
+
+        env = HackMatrixGymnax()
+        key = jax.random.PRNGKey(42)
+        obs, state = env.reset(key)
+        key, step_key = jax.random.split(key)
+
+        action_mask = env.get_action_mask(state)
+        action = jnp.argmax(action_mask.astype(jnp.int32))
+        _obs, _state, _reward, _done, info = env.step(step_key, state, action)
+
+        # Original info keys still present
+        assert "stage" in info
+        assert "score" in info
+        assert "hp" in info
+
+        # All 15 breakdown keys present
+        for bk in BREAKDOWN_KEYS:
+            assert bk in info, f"Missing breakdown key '{bk}' in wrapper info dict"

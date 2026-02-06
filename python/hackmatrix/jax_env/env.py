@@ -73,7 +73,7 @@ def reset(key: jax.Array) -> tuple[EnvState, Observation]:
 @jax.jit
 def step(
     state: EnvState, action: jnp.int32, key: jax.Array
-) -> tuple[EnvState, Observation, jnp.float32, jnp.bool_]:
+) -> tuple[EnvState, Observation, jnp.float32, jnp.bool_, dict[str, jnp.float32]]:
     """
     Take one environment step.
 
@@ -83,7 +83,8 @@ def step(
         key: JAX PRNG key
 
     Returns:
-        (new_state, observation, reward, done)
+        (new_state, observation, reward, done, reward_breakdown)
+        reward_breakdown: dict with 15 keys summing to reward
 
     Action indices:
         0-3: Movement (up, down, left, right)
@@ -145,12 +146,12 @@ def step(
     game_won = state.stage > 8
     done = player_died | game_won
 
-    # Calculate reward
-    reward = calculate_reward(state, stage_complete, game_won, player_died, action)
+    # Calculate reward with breakdown
+    reward, breakdown = calculate_reward(state, stage_complete, game_won, player_died, action)
     state = state.replace(cumulative_reward=state.cumulative_reward + reward)
 
     obs = get_observation(state)
-    return state, obs, reward, done
+    return state, obs, reward, done, breakdown
 
 
 @jax.jit

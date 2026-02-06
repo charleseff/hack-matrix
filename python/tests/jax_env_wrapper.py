@@ -82,7 +82,7 @@ class JaxEnvWrapper:
             raise RuntimeError("Environment not initialized. Call reset() first.")
 
         self.key, subkey = jax.random.split(self.key)
-        self.state, jax_obs, reward, done = jax_env.step(self.state, jnp.int32(action), subkey)
+        self.state, jax_obs, reward, done, _breakdown = jax_env.step(self.state, jnp.int32(action), subkey)
 
         return StepResult(
             observation=self._convert_observation(jax_obs),

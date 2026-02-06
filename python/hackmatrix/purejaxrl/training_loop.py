@@ -204,10 +204,10 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
                 episode_return=completed_returns,
             )
 
-            return (env_state, next_obs, key, ep_returns), transition
+            return (env_state, next_obs, key, ep_returns), (transition, infos)
 
         # Collect num_steps transitions
-        (env_state, obs, key, episode_returns), transitions = jax.lax.scan(
+        (env_state, obs, key, episode_returns), (transitions, rollout_infos) = jax.lax.scan(
             _env_step,
             (env_state, obs, rollout_key, episode_returns),
             None,
@@ -326,6 +326,27 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
         total_episode_returns = transitions.episode_return.sum()
         metrics["mean_episode_return"] = total_episode_returns / jnp.maximum(done_count, 1)
         metrics["num_episodes"] = done_count
+
+        # Reward breakdown: mean of each component across (num_steps, num_envs)
+        # rollout_infos has shape {key: (num_steps, num_envs)} for each breakdown key
+        breakdown_keys = [
+            "step_penalty", "stage_completion", "score_gain", "kills",
+            "data_siphon", "distance_shaping", "damage_penalty", "hp_recovery",
+            "victory", "death_penalty", "siphon_death_penalty", "resource_gain",
+            "resource_holding", "program_waste", "siphon_quality",
+        ]
+        for bk in breakdown_keys:
+            metrics[f"reward/{bk}"] = rollout_infos[bk].mean()
+
+        # Action fraction metrics from transitions.action (shape: num_steps, num_envs)
+        actions_flat = transitions.action.ravel().astype(jnp.float32)
+        num_actions_total = actions_flat.shape[0]
+        metrics["actions/move_frac"] = (actions_flat < 4).sum() / num_actions_total
+        metrics["actions/siphon_frac"] = (actions_flat == 4).sum() / num_actions_total
+        metrics["actions/program_frac"] = (actions_flat >= 5).sum() / num_actions_total
+
+        # Highest stage reached across all envs in this rollout
+        metrics["stats/highest_stage"] = rollout_infos["stage"].max()
 
         new_runner_state = RunnerState(
             train_state=train_state,
@@ -555,8 +576,8 @@ def evaluate(
             masked_logits = jnp.where(action_mask, logits, -1e9)
             action = jnp.argmax(masked_logits)
 
-            # Step
-            next_obs, next_env_state, reward, next_done, _ = env.step(
+            # Step (discard info dict containing breakdown)
+            next_obs, next_env_state, reward, next_done, _info = env.step(
                 step_key, env_state, action, env.default_params
             )
 
