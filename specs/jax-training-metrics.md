@@ -1,6 +1,6 @@
 # JAX Training Metrics Spec
 
-**Status:** Active
+**Status:** Complete
 **Depends on:** [reward-parity.md](./reward-parity.md), [training-speedups.md](./training-speedups.md)
 
 ## Goal

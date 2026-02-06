@@ -1,6 +1,6 @@
 # TPU Training Spec
 
-**Status:** Active
+**Status:** Deferred
 
 ## Overview
 

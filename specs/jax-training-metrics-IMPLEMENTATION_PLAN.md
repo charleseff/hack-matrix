@@ -29,7 +29,7 @@
 
 ### Manual Validation Only
 
-- [ ] **4.3** (Manual) Run training with wandb, verify 15 reward charts + action fraction charts appear
+- [x] **4.3** (Manual) Run training with wandb, verify 15 reward charts + action fraction charts appear
 - [ ] (Manual) Monitor `approx_kl < 0.06`, `clip_frac < 0.30`, `entropy > 1.0` through 500+ updates
 
 ## Key Design Decisions

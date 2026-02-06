@@ -1,6 +1,6 @@
 # Training Tuning Spec
 
-**Status:** Draft
+**Status:** Active
 **Depends on:** [training-speedups.md](./training-speedups.md), [reward-parity.md](./reward-parity.md), [game-mechanics.md](./game-mechanics.md)
 
 ## Problem

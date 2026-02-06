@@ -6,7 +6,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 ## Current Focus
 
-**Active spec:** [jax-training-metrics.md](./jax-training-metrics.md) - Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging
+**Active spec:** [training-tuning.md](./training-tuning.md) - PPO hyperparameter tuning for strategic siphon/program learning
 
 **When starting work, read the active spec first (and any related specs needed for context) without asking.** When creating or editing specs, link to other specs where useful for cross-referencing.
 
@@ -14,9 +14,9 @@ Design documents and implementation specifications for HackMatrix. As part of st
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| [jax-training-metrics.md](./jax-training-metrics.md) | **Active** | Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging |
-| [training-tuning.md](./training-tuning.md) | **Draft** | PPO hyperparameter tuning for strategic siphon/program learning |
-| [training-speedups.md](./training-speedups.md) | **Active** | TPU training on Google TRC (10x speedup target) |
+| [jax-training-metrics.md](./jax-training-metrics.md) | **Complete** | Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging |
+| [training-tuning.md](./training-tuning.md) | **Active** | PPO hyperparameter tuning for strategic siphon/program learning |
+| [training-speedups.md](./training-speedups.md) | **Deferred** | TPU training on Google TRC (10x speedup target) |
 | [reward-parity.md](./reward-parity.md) | **Complete** | JAX reward parity with Swift RewardCalculator (5 missing components + 2 fixes) |
 | [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training |
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
