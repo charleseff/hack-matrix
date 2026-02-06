@@ -21,6 +21,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 | [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training |
 | [game-mechanics.md](./game-mechanics.md) | **Reference** | Authoritative game mechanics reference (single source of truth) |
 | [training-reference.md](./training-reference.md) | **Reference** | RL training commands, monitoring, and troubleshooting |
+| [training-validation-conventions.md](./training-validation-conventions.md) | **Reference** | Conventions for training specs: environment detection, run/monitor workflow, completion criteria |
 | [jax-dummy-env.md](./jax-dummy-env.md) | **Complete** | Minimal JAX dummy environment for plug-and-play testing with Swift env |
 | [env-parity-tests.md](./env-parity-tests.md) | **Complete** | Interface-based test suite for validating env implementations |
 | [observation-and-attack-fixes.md](./observation-and-attack-fixes.md) | **Complete** | Add siphonCenter to obs space, ATK+ usable twice per stage |
@@ -45,6 +46,10 @@ Before starting a major feature or architectural change, create a spec document 
 1. Move `IMPLEMENTATION_PLAN.md` to `specs/[spec-name]-IMPLEMENTATION_PLAN.md`
 2. Update the spec's status to **Complete** in this README
 3. Set the next spec to **Active** in both Current Focus and Specs Index
+
+## Training Specs
+
+Training-related specs **must** follow the conventions in [training-validation-conventions.md](./training-validation-conventions.md) and include a `## Training Validation` section with run commands, metrics, and success thresholds.
 
 ## Firewall Notes
 
