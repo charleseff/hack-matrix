@@ -16,6 +16,7 @@ Design documents and implementation specifications for HackMatrix. As part of st
 |------|--------|-------------|
 | [jax-training-metrics.md](./jax-training-metrics.md) | **Complete** | Per-update reward breakdown and behavioral metrics for PureJaxRL wandb logging |
 | [training-tuning.md](./training-tuning.md) | **Active** | PPO hyperparameter tuning for strategic siphon/program learning |
+| [module-boundaries.md](./module-boundaries.md) | **Draft** | Module boundaries & information hiding for Swift and Python codebases |
 | [training-speedups.md](./training-speedups.md) | **Deferred** | TPU training on Google TRC (10x speedup target) |
 | [reward-parity.md](./reward-parity.md) | **Complete** | JAX reward parity with Swift RewardCalculator (5 missing components + 2 fixes) |
 | [wandb-purejaxrl.md](./wandb-purejaxrl.md) | **Complete** | Wandb integration for PureJaxRL training |
