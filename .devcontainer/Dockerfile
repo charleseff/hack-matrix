@@ -29,7 +29,7 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME
 
-# Create directory for persistent zsh history (mounted as volume in devcontainer.json)
+# Create directory for persistent shell history (mounted as volume in devcontainer.json)
 RUN mkdir -p /commandhistory && chown -R $USERNAME /commandhistory
 
 # Set up firewall script with passwordless sudo
@@ -37,5 +37,7 @@ COPY .devcontainer/init-firewall.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/init-firewall.sh && \
     echo "$USERNAME ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/$USERNAME-firewall && \
     chmod 0440 /etc/sudoers.d/$USERNAME-firewall
+
+ENV SHELL=/bin/bash
 
 USER $USERNAME

@@ -5,16 +5,11 @@
 		"context": ".."
 	},
 	"features": {
-		"ghcr.io/devcontainers/features/common-utils:2": {
-			"configureZshAsDefaultShell": true
-		},
+		"ghcr.io/devcontainers/features/common-utils:2": {},
 		"ghcr.io/devcontainers/features/github-cli:1": {},
 		"ghcr.io/stu-bell/devcontainer-features/claude-code:0": {},
 		"ghcr.io/devcontainers/features/git:1": {},
-		"ghcr.io/devcontainers-extra/features/starship:1": {},
-		"ghcr.io/devcontainers-extra/features/neovim-apt-get": {},
-		"ghcr.io/dhoeric/features/google-cloud-cli:1": {},
-		"ghcr.io/devcontainers/features/node:1": {}
+		"ghcr.io/devcontainers-extra/features/starship:1": {}
 	},
 	"runArgs": [
 		"--cap-add=NET_ADMIN",
@@ -27,11 +22,11 @@
 		// Mount .netrc for wandb authentication
 		"source=${localEnv:HOME}/.netrc,target=/home/vscode/.netrc,type=bind,consistency=cached",
 		"source=hack-matrix-claude-config,target=/home/vscode/.claude,type=volume",
-		"source=hack-matrix-zsh-history,target=/commandhistory,type=volume",
+		"source=hack-matrix-shell-history,target=/commandhistory,type=volume",
 		"source=hack-matrix-gcloud-config,target=/home/vscode/.config/gcloud,type=volume"
 	],
 	"updateRemoteUserUID": true,
-	"postCreateCommand": "sudo chown -R $(whoami) /commandhistory && (test -f python/venv-linux/bin/activate || python3 -m venv python/venv-linux) && python/venv-linux/bin/pip install -r python/requirements.txt && ./swift-build -c release && curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/latest/download/prek-installer.sh | sh && prek install",
+	"postCreateCommand": "sudo chown -R $(whoami) /commandhistory && (test -f python/venv-linux/bin/activate || python3 -m venv python/venv-linux) && python/venv-linux/bin/pip install -r python/requirements.txt && ./swift-build -c release",
 	"customizations": {
 		"vscode": {
 			"extensions": [
