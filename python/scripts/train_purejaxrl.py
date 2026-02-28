@@ -36,12 +36,14 @@ if "JAX_COMPILATION_CACHE_DIR" not in os.environ:
     os.environ["JAX_COMPILATION_CACHE_DIR"] = cache_dir
 
 import jax
+import jax.numpy as jnp
 
 # Add python directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from hackmatrix.purejaxrl import (
     HackMatrixGymnax,
+    RunnerState,
     TrainConfig,
     get_device_config,
     make_chunked_train,
@@ -49,7 +51,9 @@ from hackmatrix.purejaxrl import (
 from hackmatrix.purejaxrl.checkpointing import (
     save_checkpoint,
     save_params_npz,
+    save_phase_snapshot,
 )
+from hackmatrix.purejaxrl.env_wrapper import EnvParams
 from hackmatrix.purejaxrl.config import auto_scale_for_batch_size, auto_tune_for_device
 from hackmatrix.purejaxrl.logging import TrainingLogger, print_config
 from hackmatrix.run_utils import (
@@ -150,11 +154,76 @@ def parse_args():
         "--no-artifact", action="store_true", help="Disable checkpoint artifact uploads to WandB"
     )
 
+    # Curriculum learning
+    parser.add_argument(
+        "--curriculum", action="store_true",
+        help="Enable curriculum learning (3-phase progressive difficulty)",
+    )
+    parser.add_argument(
+        "--curriculum-start-phase", type=int, default=None, choices=[1, 2, 3],
+        help="Override starting curriculum phase (1-3). Use with --resume to rollback to a phase.",
+    )
+
     # Misc
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--auto-tune", action="store_true", help="Auto-tune config for device")
 
     return parser.parse_args()
+
+
+# MARK: Curriculum Phases
+
+
+CURRICULUM_PHASES = {
+    1: EnvParams(
+        starting_data_siphons=jnp.int32(2),
+        starting_credits=jnp.int32(3),
+        starting_energy=jnp.int32(3),
+        transmission_scale=jnp.float32(0.375),  # [0,0,1,1,2,2,3,3] ≈ 0.375 * [1..8]
+        siphon_death_penalty=jnp.float32(-2.0),
+        distance_shaping_coef=jnp.float32(0.025),
+        data_siphon_reward=jnp.float32(2.0),
+    ),
+    2: EnvParams(
+        starting_data_siphons=jnp.int32(1),
+        starting_credits=jnp.int32(1),
+        starting_energy=jnp.int32(1),
+        transmission_scale=jnp.float32(0.625),  # [1,1,2,2,3,3,4,4] ≈ 0.625 * [1..8]
+        siphon_death_penalty=jnp.float32(-5.0),
+        distance_shaping_coef=jnp.float32(0.04),
+        data_siphon_reward=jnp.float32(1.5),
+    ),
+    3: EnvParams(),  # Full difficulty (all defaults)
+}
+
+# Phase transition thresholds
+PHASE_TRANSITION = {
+    1: {"return_threshold": -1.0, "consecutive_required": 20, "fallback_updates": 300},
+    2: {"return_threshold": -1.2, "consecutive_required": 20, "fallback_updates": 300},
+}
+
+
+def check_phase_transition(
+    phase: int,
+    consecutive_above: int,
+    updates_in_phase: int,
+    mean_return: float,
+) -> tuple[bool, int]:
+    """Check if current phase should transition to next.
+
+    Returns:
+        (should_transition, updated_consecutive_count)
+    """
+    if phase >= 3:
+        return False, 0
+
+    thresholds = PHASE_TRANSITION[phase]
+    new_consecutive = consecutive_above + 1 if mean_return > thresholds["return_threshold"] else 0
+    should_transition = (
+        new_consecutive >= thresholds["consecutive_required"]
+        or updates_in_phase >= thresholds["fallback_updates"]
+    )
+    return should_transition, new_consecutive
 
 
 # MARK: Main
@@ -213,6 +282,24 @@ def main():
 
     print_config(config)
 
+    # Determine curriculum phase
+    current_phase = 1 if args.curriculum else 3
+    if args.curriculum_start_phase is not None:
+        current_phase = args.curriculum_start_phase
+        if not args.curriculum:
+            print("Note: --curriculum-start-phase implies --curriculum")
+            args.curriculum = True
+
+    env_params = CURRICULUM_PHASES[current_phase] if args.curriculum else EnvParams()
+
+    if args.curriculum:
+        print(f"\nCurriculum learning enabled, starting at Phase {current_phase}")
+        print(f"  transmission_scale={float(env_params.transmission_scale):.3f}")
+        print(f"  starting_siphons={int(env_params.starting_data_siphons)}")
+        print(f"  distance_shaping={float(env_params.distance_shaping_coef):.3f}")
+        print(f"  siphon_death_penalty={float(env_params.siphon_death_penalty):.1f}")
+        print(f"  data_siphon_reward={float(env_params.data_siphon_reward):.1f}")
+
     # Create environment
     env = HackMatrixGymnax()
     key = jax.random.PRNGKey(args.seed)
@@ -235,10 +322,11 @@ def main():
         # New run - generate name or use provided
         run_name = args.run_name
         if run_name is None:
+            suffix = "curriculum" if args.curriculum else args.run_suffix
             run_name = generate_run_name(
                 base_dir=config.checkpoint_dir,
                 prefix="hackmatrix-jax",
-                run_suffix=args.run_suffix,
+                run_suffix=suffix,
             )
             print(f"Generated run name: {run_name}")
         run_checkpoint_dir = os.path.join(config.checkpoint_dir, run_name)
@@ -269,6 +357,9 @@ def main():
         "device_type": device_info["device_type"],
         "device_count": device_info["device_count"],
         "backend": device_info["backend"],
+        # Curriculum
+        "curriculum": args.curriculum,
+        "curriculum_start_phase": current_phase,
     }
 
     # Check for checkpoint to resume from (before logger init for rewind support)
@@ -338,6 +429,7 @@ def main():
                 latest_state["step"],
                 logger=logger if not args.no_artifact else None,
                 last_logged_step=logger.last_logged_step,
+                curriculum_phase=current_phase if args.curriculum else None,
             )
         else:
             print("No state to save yet (training hasn't started)")
@@ -345,8 +437,14 @@ def main():
 
     signal.signal(signal.SIGINT, handle_interrupt)
 
+    # Curriculum tracking state
+    consecutive_above_threshold = 0
+    updates_in_current_phase = 0
+
     def log_callback(metrics: dict, step: int):
         """Callback for logging metrics after each chunk."""
+        if args.curriculum:
+            metrics["curriculum/phase"] = current_phase
         logger.log_metrics(metrics, step)
 
     def checkpoint_callback(runner_state, step: int):
@@ -371,36 +469,125 @@ def main():
                 step,
                 logger=logger if not args.no_artifact else None,
                 last_logged_step=logger.last_logged_step,
+                curriculum_phase=current_phase if args.curriculum else None,
             )
             last_checkpoint_step = step
             last_checkpoint_time = time.time()
 
-    train_fn = make_chunked_train(
-        config,
-        env,
-        chunk_size=config.log_interval,
-        log_fn=log_callback,
-        checkpoint_fn=checkpoint_callback,
-        start_step=effective_start_step,
-        checkpoint_path=checkpoint_path,
-    )
+    if not args.curriculum:
+        # Non-curriculum: use the existing single-pass training
+        train_fn = make_chunked_train(
+            config,
+            env,
+            chunk_size=config.log_interval,
+            log_fn=log_callback,
+            checkpoint_fn=checkpoint_callback,
+            start_step=effective_start_step,
+            checkpoint_path=checkpoint_path,
+            env_params=env_params,
+        )
 
-    print("Compiling training function (first chunk)...")
-    start_time = time.time()
-    final_state, all_metrics, _ = train_fn(key)  # _ is last_logged_step (already used)
-    total_time = time.time() - start_time
-    print(f"\nTraining completed in {total_time:.1f}s")
+        print("Compiling training function (first chunk)...")
+        start_time = time.time()
+        final_state, all_metrics, _ = train_fn(key)
+        total_time = time.time() - start_time
+        print(f"\nTraining completed in {total_time:.1f}s")
+    else:
+        # Curriculum: manual chunk loop with phase transitions
+        from hackmatrix.purejaxrl.training_loop import init_runner_state, make_train_chunk
+
+        chunk_size = config.log_interval
+        train_chunk_fn = make_train_chunk(config, env, chunk_size)
+
+        print("Initializing training state...")
+        runner_state, last_logged_step = init_runner_state(
+            config, env, key, start_step=effective_start_step,
+            checkpoint_path=checkpoint_path, env_params=env_params,
+        )
+        if last_logged_step > 0 and not args.rewind:
+            logger.set_resume_step(last_logged_step)
+
+        num_updates = config.num_updates
+        num_chunks = num_updates // chunk_size
+
+        print(f"Compiling training function (first chunk of Phase {current_phase})...")
+        start_time = time.time()
+
+        for chunk_idx in range(num_chunks):
+            runner_state, chunk_metrics = train_chunk_fn(runner_state)
+
+            chunk_metrics_np = jax.tree.map(lambda x: jax.device_get(x), chunk_metrics)
+            step = int(runner_state.update_step)
+
+            # Log metrics
+            from hackmatrix.purejaxrl.training_loop import aggregate_chunk_metrics
+            aggregated = aggregate_chunk_metrics(chunk_metrics_np)
+            log_callback(aggregated, step)
+            checkpoint_callback(runner_state, step)
+
+            # Check phase transition (using aggregated mean_episode_return)
+            mean_return = aggregated.get("mean_episode_return", -999.0)
+            updates_in_current_phase += chunk_size
+
+            should_transition, consecutive_above_threshold = check_phase_transition(
+                current_phase,
+                consecutive_above_threshold,
+                updates_in_current_phase,
+                mean_return,
+            )
+
+            if should_transition:
+                # Save phase snapshot before transitioning
+                print(f"\n{'='*60}")
+                print(f"Phase {current_phase} complete at step {step}!")
+                print(f"  mean_return={mean_return:.3f}, updates_in_phase={updates_in_current_phase}")
+                save_phase_snapshot(
+                    runner_state.train_state,
+                    run_checkpoint_dir,
+                    step,
+                    current_phase,
+                    last_logged_step=logger.last_logged_step,
+                    logger=logger if not args.no_artifact else None,
+                )
+
+                # Advance phase
+                current_phase += 1
+                env_params = CURRICULUM_PHASES[current_phase]
+                consecutive_above_threshold = 0
+                updates_in_current_phase = 0
+
+                print(f"Transitioning to Phase {current_phase}")
+                print(f"  transmission_scale={float(env_params.transmission_scale):.3f}")
+                print(f"  starting_siphons={int(env_params.starting_data_siphons)}")
+                print(f"  distance_shaping={float(env_params.distance_shaping_coef):.3f}")
+                print(f"  siphon_death_penalty={float(env_params.siphon_death_penalty):.1f}")
+                print(f"  data_siphon_reward={float(env_params.data_siphon_reward):.1f}")
+                print(f"{'='*60}\n")
+
+                # Swap env_params in runner state (environments will use new params on next reset)
+                runner_state = RunnerState(
+                    train_state=runner_state.train_state,
+                    env_state=runner_state.env_state,
+                    obs=runner_state.obs,
+                    key=runner_state.key,
+                    update_step=runner_state.update_step,
+                    episode_returns=runner_state.episode_returns,
+                    env_params=env_params,
+                )
+
+                # Recompile chunk function with new env_params
+                # (env_params is now carried in RunnerState and used by _update_step)
+                # No recompile needed since env_params flows through RunnerState
+
+        total_time = time.time() - start_time
+        print(f"\nTraining completed in {total_time:.1f}s")
+        final_state = runner_state
 
     # Print final metrics
     total_steps = config.num_updates * config.batch_size
-    print("\nFinal metrics:")
-    for key_name in ["total_loss", "pg_loss", "vf_loss", "entropy", "mean_reward"]:
-        if key_name in all_metrics:
-            val = all_metrics[key_name]
-            if hasattr(val, "__len__"):
-                print(f"  {key_name}: {float(val[-1]):.4f}")
-            else:
-                print(f"  {key_name}: {float(val):.4f}")
+    print(f"\nTraining complete! Total timesteps: {total_steps:,}")
+    if args.curriculum:
+        print(f"Final curriculum phase: {current_phase}")
 
     # Save final checkpoint
     os.makedirs(run_checkpoint_dir, exist_ok=True)
@@ -412,8 +599,6 @@ def main():
         logger.log_checkpoint_artifact(final_params_path, config.num_updates, "final-model")
 
     logger.finish()
-
-    print(f"\nTraining complete! Total timesteps: {total_steps:,}")
 
 
 if __name__ == "__main__":

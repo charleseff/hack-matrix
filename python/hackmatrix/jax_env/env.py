@@ -15,7 +15,7 @@ from .observation import Observation, get_observation
 from .programs import is_program_valid
 from .rewards import calculate_reward
 from .siphon_quality import check_siphon_optimality
-from .stage import advance_stage, save_previous_state
+from .stage import advance_stage, generate_stage_content, save_previous_state
 from .state import (
     ACTION_MOVE_DOWN,
     ACTION_MOVE_LEFT,
@@ -38,26 +38,32 @@ from .state import (
 
 
 @jax.jit
-def reset(key: jax.Array) -> tuple[EnvState, Observation]:
+def reset(key: jax.Array, params=None) -> tuple[EnvState, Observation]:
     """
     Initialize environment state.
 
     Args:
         key: JAX PRNG key for random stage generation
+        params: EnvParams with curriculum settings (None = defaults)
 
     Returns:
         (initial_state, initial_observation)
     """
     state = create_empty_state(key)
 
+    # Apply curriculum starting resources
+    starting_credits = jnp.int32(0) if params is None else jnp.int32(params.starting_credits)
+    starting_energy = jnp.int32(0) if params is None else jnp.int32(params.starting_energy)
+    starting_siphons = jnp.int32(0) if params is None else jnp.int32(params.starting_data_siphons)
+
     # Set initial player position at (0, 0)
     player = Player(
         row=jnp.int32(0),
         col=jnp.int32(0),
         hp=jnp.int32(PLAYER_MAX_HP),
-        credits=jnp.int32(0),
-        energy=jnp.int32(0),
-        data_siphons=jnp.int32(0),
+        credits=starting_credits,
+        energy=starting_energy,
+        data_siphons=starting_siphons,
         attack_damage=jnp.int32(1),
         score=jnp.int32(0),
     )
@@ -66,13 +72,17 @@ def reset(key: jax.Array) -> tuple[EnvState, Observation]:
         prev_hp=jnp.int32(PLAYER_MAX_HP),
     )
 
+    # Generate initial stage content with curriculum transmission scaling
+    transmission_scale = jnp.float32(1.0) if params is None else params.transmission_scale
+    state = generate_stage_content(state, jnp.int32(1), transmission_scale)
+
     obs = get_observation(state)
     return state, obs
 
 
 @jax.jit
 def step(
-    state: EnvState, action: jnp.int32, key: jax.Array
+    state: EnvState, action: jnp.int32, key: jax.Array, params=None
 ) -> tuple[EnvState, Observation, jnp.float32, jnp.bool_, dict[str, jnp.float32]]:
     """
     Take one environment step.
@@ -81,6 +91,7 @@ def step(
         state: Current environment state
         action: Action index (0-27)
         key: JAX PRNG key
+        params: EnvParams with curriculum settings (None = defaults)
 
     Returns:
         (new_state, observation, reward, done, reward_breakdown)
@@ -134,10 +145,11 @@ def step(
     reached_exit = (state.player.row == state.exit_row) & (state.player.col == state.exit_col)
     stage_complete = reached_exit & (state.stage <= 8) & (is_move_action | is_warp_action)
 
-    # Advance stage if complete
+    # Advance stage if complete — pass transmission_scale for new stage generation
+    transmission_scale = jnp.float32(1.0) if params is None else params.transmission_scale
     state = jax.lax.cond(
         stage_complete,
-        lambda s: advance_stage(s),
+        lambda s: advance_stage(s, transmission_scale),
         lambda s: s,
         state,
     )
@@ -146,8 +158,18 @@ def step(
     game_won = state.stage > 8
     done = player_died | game_won
 
+    # Extract reward params (use defaults when params is None)
+    distance_shaping_coef = jnp.float32(0.05) if params is None else params.distance_shaping_coef
+    siphon_death_penalty = jnp.float32(-10.0) if params is None else params.siphon_death_penalty
+    data_siphon_reward = jnp.float32(1.0) if params is None else params.data_siphon_reward
+
     # Calculate reward with breakdown
-    reward, breakdown = calculate_reward(state, stage_complete, game_won, player_died, action)
+    reward, breakdown = calculate_reward(
+        state, stage_complete, game_won, player_died, action,
+        distance_shaping_coef=distance_shaping_coef,
+        siphon_death_penalty=siphon_death_penalty,
+        data_siphon_reward=data_siphon_reward,
+    )
     state = state.replace(cumulative_reward=state.cumulative_reward + reward)
 
     obs = get_observation(state)
@@ -196,6 +218,6 @@ def get_valid_actions(state: EnvState) -> jax.Array:
 # =============================================================================
 
 
-batched_reset = jax.vmap(reset)
-batched_step = jax.vmap(step)
+batched_reset = jax.vmap(reset, in_axes=(0, None))
+batched_step = jax.vmap(step, in_axes=(0, 0, 0, None))
 batched_get_valid_actions = jax.vmap(get_valid_actions)

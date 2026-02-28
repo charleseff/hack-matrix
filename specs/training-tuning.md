@@ -127,8 +127,10 @@ Higher entropy bonus keeps the policy more exploratory when rare actions become 
      --lr 6.25e-5 \
      --ent-coef 0.15 \
      --log-interval 5 \
-     --checkpoint-dir checkpoints
+     --checkpoint-dir checkpoints \
+     --save-interval-minutes 10
    ```
+   **Note:** Always run with WandB enabled (the default). Never use `--no-wandb` for real training runs.
 2. **Monitor early metrics** (first 50 updates):
    - `approx_kl` should stay < 0.06 (was ~0.04 with previous config)
    - `clip_frac` should stay < 0.30

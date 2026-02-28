@@ -22,6 +22,7 @@ def save_checkpoint(
     metrics: dict[str, float] | None = None,
     logger: Any = None,
     last_logged_step: int | None = None,
+    curriculum_phase: int | None = None,
 ) -> str:
     """Save training checkpoint.
 
@@ -32,6 +33,7 @@ def save_checkpoint(
         metrics: Optional metrics to save with checkpoint
         logger: Optional TrainingLogger for wandb artifact upload
         last_logged_step: Last step logged to wandb (for resume without conflicts)
+        curriculum_phase: Current curriculum phase (1-3), None if not using curriculum
 
     Returns:
         checkpoint_path: Path to saved checkpoint file
@@ -45,6 +47,8 @@ def save_checkpoint(
         "metrics": metrics or {},
         "last_logged_step": last_logged_step or step,
     }
+    if curriculum_phase is not None:
+        checkpoint["curriculum_phase"] = curriculum_phase
 
     checkpoint_path = os.path.join(path, f"checkpoint_{step}.pkl")
     with open(checkpoint_path, "wb") as f:
@@ -62,6 +66,53 @@ def save_checkpoint(
         logger.log_checkpoint_artifact(checkpoint_path, step)
 
     return checkpoint_path
+
+
+def save_phase_snapshot(
+    train_state: TrainState,
+    path: str,
+    step: int,
+    phase: int,
+    last_logged_step: int | None = None,
+    logger: Any = None,
+) -> str:
+    """Save a curriculum phase snapshot checkpoint.
+
+    These are labeled snapshots saved at phase boundaries for rollback support.
+    They are never overwritten by regular time-based checkpoints.
+
+    Args:
+        train_state: Current training state
+        path: Checkpoint directory
+        step: Current training step
+        phase: Phase that just completed (1 or 2)
+        last_logged_step: Last step logged to wandb
+        logger: Optional TrainingLogger for artifact upload
+
+    Returns:
+        snapshot_path: Path to saved snapshot file
+    """
+    os.makedirs(path, exist_ok=True)
+
+    checkpoint = {
+        "step": step,
+        "params": jax.device_get(train_state.params),
+        "opt_state": jax.device_get(train_state.opt_state),
+        "metrics": {},
+        "last_logged_step": last_logged_step or step,
+        "curriculum_phase": phase,
+    }
+
+    snapshot_path = os.path.join(path, f"phase_{phase}_complete.pkl")
+    with open(snapshot_path, "wb") as f:
+        pickle.dump(checkpoint, f)
+
+    print(f"Saved phase {phase} snapshot to {snapshot_path}")
+
+    if logger is not None and hasattr(logger, "log_checkpoint_artifact"):
+        logger.log_checkpoint_artifact(snapshot_path, step, f"phase-{phase}-snapshot")
+
+    return snapshot_path
 
 
 def load_checkpoint(

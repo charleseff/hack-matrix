@@ -46,7 +46,7 @@ def save_previous_state(state: EnvState) -> EnvState:
     )
 
 
-def advance_stage(state: EnvState) -> EnvState:
+def advance_stage(state: EnvState, transmission_scale: jnp.float32 = jnp.float32(1.0)) -> EnvState:
     """Advance to next stage."""
     new_stage = state.stage + 1
 
@@ -134,13 +134,15 @@ def advance_stage(state: EnvState) -> EnvState:
         trans_mask=jnp.zeros(state.trans_mask.shape, dtype=jnp.bool_),
     )
 
-    # Generate new stage content
-    state = generate_stage_content(state, new_stage)
+    # Generate new stage content with transmission scaling
+    state = generate_stage_content(state, new_stage, transmission_scale)
 
     return state
 
 
-def generate_stage_content(state: EnvState, stage: jnp.int32) -> EnvState:
+def generate_stage_content(
+    state: EnvState, stage: jnp.int32, transmission_scale: jnp.float32 = jnp.float32(1.0)
+) -> EnvState:
     """Generate blocks, resources, and transmissions for a new stage.
 
     This mimics Swift's stage initialization:
@@ -252,9 +254,10 @@ def generate_stage_content(state: EnvState, stage: jnp.int32) -> EnvState:
     )
 
     # === Spawn Transmissions ===
-    # Stage 1-8 spawns 1-8 transmissions respectively
+    # Stage 1-8 spawns 1-8 transmissions respectively, scaled by curriculum parameter
     starting_enemies = jnp.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=jnp.int32)
-    transmission_count = starting_enemies[jnp.minimum(stage - 1, 7)]
+    base_count = starting_enemies[jnp.minimum(stage - 1, 7)]
+    transmission_count = jnp.int32(jnp.round(base_count.astype(jnp.float32) * transmission_scale))
 
     # Find empty cells for transmissions (not player, not blocks, not corners)
     player_row, player_col = state.player.row, state.player.col

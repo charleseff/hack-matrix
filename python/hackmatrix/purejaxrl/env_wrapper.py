@@ -38,9 +38,19 @@ OBS_SIZE = PLAYER_STATE_SIZE + NUM_PROGRAMS + GRID_SIZE * GRID_SIZE * GRID_FEATU
 
 @struct.dataclass
 class EnvParams:
-    """Environment parameters (empty for HackMatrix, but required by Gymnax interface)."""
+    """Environment parameters for curriculum learning.
 
-    pass
+    Default values match the normal (full difficulty) game.
+    Curriculum phases override these to create easier training environments.
+    """
+
+    starting_data_siphons: jnp.int32 = 0
+    starting_credits: jnp.int32 = 0
+    starting_energy: jnp.int32 = 0
+    transmission_scale: jnp.float32 = 1.0  # multiplier on per-stage transmission count
+    siphon_death_penalty: jnp.float32 = -10.0
+    distance_shaping_coef: jnp.float32 = 0.05
+    data_siphon_reward: jnp.float32 = 1.0
 
 
 @struct.dataclass
@@ -75,14 +85,15 @@ class HackMatrixGymnax:
 
         Args:
             key: JAX random key
-            params: Environment parameters (unused)
+            params: Environment parameters (curriculum settings)
 
         Returns:
             obs: Flattened observation array of shape (1545,)
             state: Wrapper state containing EnvState
         """
+        params = params if params is not None else self.default_params
         key, reset_key = jax.random.split(key)
-        env_state, obs = jax_reset(reset_key)
+        env_state, obs = jax_reset(reset_key, params)
 
         flat_obs = self._flatten_obs(obs)
         wrapper_state = GymnaxEnvState(env_state=env_state, key=key)
@@ -102,7 +113,7 @@ class HackMatrixGymnax:
             key: JAX random key
             state: Current wrapper state
             action: Action index (0-27)
-            params: Environment parameters (unused)
+            params: Environment parameters (curriculum settings)
 
         Returns:
             obs: Flattened observation array
@@ -111,8 +122,9 @@ class HackMatrixGymnax:
             done: Episode termination flag
             info: Dictionary with additional info
         """
+        params = params if params is not None else self.default_params
         key, step_key = jax.random.split(key)
-        env_state, obs, reward, done, breakdown = jax_step(state.env_state, action, step_key)
+        env_state, obs, reward, done, breakdown = jax_step(state.env_state, action, step_key, params)
 
         flat_obs = self._flatten_obs(obs)
         new_state = GymnaxEnvState(env_state=env_state, key=key)
@@ -181,18 +193,20 @@ def make_batched_env(num_envs: int):
 
     Returns:
         Tuple of (batched_reset, batched_step, batched_get_mask, env)
+        batched_reset(keys, params) and batched_step(keys, states, actions, params)
+        accept EnvParams that are broadcast across all envs.
     """
     env = HackMatrixGymnax()
 
-    # Vectorize over the key dimension
+    # Vectorize over the key dimension; params are broadcast (not vmapped)
     batched_reset = jax.vmap(
-        lambda key: env.reset(key, env.default_params),
-        in_axes=0,
+        lambda key, params: env.reset(key, params),
+        in_axes=(0, None),
     )
 
     batched_step = jax.vmap(
-        lambda key, state, action: env.step(key, state, action, env.default_params),
-        in_axes=(0, 0, 0),
+        lambda key, state, action, params: env.step(key, state, action, params),
+        in_axes=(0, 0, 0, None),
     )
 
     batched_get_mask = jax.vmap(env.get_action_mask)

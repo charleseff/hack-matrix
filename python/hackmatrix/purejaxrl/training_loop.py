@@ -18,7 +18,7 @@ import optax
 from flax.training.train_state import TrainState
 
 from .config import TrainConfig
-from .env_wrapper import OBS_SIZE, GymnaxEnvState, HackMatrixGymnax
+from .env_wrapper import OBS_SIZE, EnvParams, GymnaxEnvState, HackMatrixGymnax
 from .masked_ppo import (
     Transition,
     compute_gae,
@@ -40,6 +40,7 @@ class RunnerState(NamedTuple):
     key: jax.Array
     update_step: int
     episode_returns: jax.Array  # Per-env accumulator for episode returns
+    env_params: EnvParams  # Curriculum parameters (carried so Python loop can swap between chunks)
 
 
 # MARK: - Initialization
@@ -51,6 +52,7 @@ def init_runner_state(
     key: jax.Array,
     start_step: int = 0,
     checkpoint_path: str | None = None,
+    env_params: EnvParams | None = None,
 ) -> tuple["RunnerState", int]:
     """Initialize runner state outside JIT boundary.
 
@@ -62,11 +64,14 @@ def init_runner_state(
         key: JAX random key
         start_step: Initial update step (for resuming training)
         checkpoint_path: Optional path to checkpoint directory to resume from
+        env_params: Curriculum parameters (None = default full-difficulty)
 
     Returns:
         runner_state: Initialized RunnerState ready for training
         last_logged_step: Last step logged to wandb (for resume without conflicts)
     """
+    env_params = env_params if env_params is not None else env.default_params
+
     # Initialize network
     key, init_key = jax.random.split(key)
     network, params = init_network(
@@ -100,11 +105,11 @@ def init_runner_state(
         start_step = loaded_step
         print(f"Resuming from step {start_step}")
 
-    # Initialize environments (vectorized)
+    # Initialize environments (vectorized) with curriculum params
     key, *env_keys = jax.random.split(key, config.num_envs + 1)
     env_keys = jnp.array(env_keys)
 
-    reset_fn = jax.vmap(lambda k: env.reset(k, env.default_params))
+    reset_fn = jax.vmap(lambda k: env.reset(k, env_params), in_axes=0)
     obs, env_states = reset_fn(env_keys)
 
     # Initialize episode return accumulators (one per env)
@@ -117,6 +122,7 @@ def init_runner_state(
         key=key,
         update_step=start_step,
         episode_returns=episode_returns,
+        env_params=env_params,
     )
     return runner_state, last_logged_step
 
@@ -140,7 +146,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
 
     def _update_step(runner_state: RunnerState, _) -> tuple[RunnerState, dict]:
         """Single PPO update step."""
-        train_state, env_state, obs, key, update_step, episode_returns = runner_state
+        train_state, env_state, obs, key, update_step, episode_returns, env_params = runner_state
 
         # MARK: Rollout Collection
         key, rollout_key = jax.random.split(key)
@@ -168,9 +174,9 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             action_keys = jax.random.split(action_key, config.num_envs)
             actions, log_probs = jax.vmap(sample_action)(logits, action_masks, action_keys)
 
-            # Step environments
+            # Step environments with curriculum params
             step_keys = jax.random.split(step_key, config.num_envs)
-            step_fn = jax.vmap(lambda k, s, a: env.step(k, s, a, env.default_params))
+            step_fn = jax.vmap(lambda k, s, a: env.step(k, s, a, env_params), in_axes=(0, 0, 0))
             next_obs, next_env_state, rewards, dones, infos = step_fn(step_keys, env_state, actions)
 
             # Track episode returns
@@ -181,9 +187,9 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             # Reset accumulator for done envs
             ep_returns = jnp.where(dones, 0.0, new_ep_returns)
 
-            # Handle episode resets
+            # Handle episode resets with curriculum params
             def handle_reset(done, next_s, next_o, k):
-                reset_obs, reset_state = env.reset(k, env.default_params)
+                reset_obs, reset_state = env.reset(k, env_params)
                 return jax.lax.cond(
                     done,
                     lambda: (reset_state, reset_obs),
@@ -355,6 +361,7 @@ def _make_update_step(config: TrainConfig, env: HackMatrixGymnax):
             key=key,
             update_step=update_step + 1,
             episode_returns=episode_returns,
+            env_params=env_params,
         )
 
         return new_runner_state, metrics
@@ -414,9 +421,14 @@ def aggregate_chunk_metrics(chunk_metrics: dict) -> dict:
         chunk_metrics: Dict with values of shape (chunk_size,)
 
     Returns:
-        aggregated: Dict with scalar values (mean across chunk)
+        aggregated: Dict with scalar values (mean across chunk, max for highest_stage)
     """
-    return jax.tree.map(lambda x: float(jnp.mean(x)), chunk_metrics)
+    # Use max for highest_stage (it's the peak across the chunk, not an average)
+    max_keys = {"stats/highest_stage"}
+    return {
+        k: float(jnp.max(v)) if k in max_keys else float(jnp.mean(v))
+        for k, v in chunk_metrics.items()
+    }
 
 
 def concatenate_metrics(chunks: list[dict]) -> dict:
@@ -446,6 +458,7 @@ def make_chunked_train(
     checkpoint_fn: Callable[[RunnerState, int], None] | None = None,
     start_step: int = 0,
     checkpoint_path: str | None = None,
+    env_params: EnvParams | None = None,
 ):
     """Create chunked training function with Python logging loop.
 
@@ -460,6 +473,7 @@ def make_chunked_train(
         checkpoint_fn: Called periodically with (runner_state, update_step)
         start_step: Initial update step for resuming (offsets step counter)
         checkpoint_path: Optional path to checkpoint directory to resume from
+        env_params: Curriculum parameters (None = default full-difficulty)
 
     Returns:
         train_fn: Function(key) -> (final_state, all_metrics)
@@ -486,7 +500,8 @@ def make_chunked_train(
         """
         # Initialize state OUTSIDE JIT
         runner_state, last_logged_step = init_runner_state(
-            config, env, key, start_step=start_step, checkpoint_path=checkpoint_path
+            config, env, key, start_step=start_step, checkpoint_path=checkpoint_path,
+            env_params=env_params,
         )
 
         # Calculate number of chunks
@@ -546,6 +561,7 @@ def evaluate(
     env: HackMatrixGymnax,
     num_episodes: int,
     key: jax.Array,
+    env_params: EnvParams | None = None,
 ) -> dict:
     """Evaluate trained policy.
 
@@ -554,15 +570,17 @@ def evaluate(
         env: Environment instance
         num_episodes: Number of episodes to evaluate
         key: JAX random key
+        env_params: Curriculum parameters (None = default)
 
     Returns:
         metrics: Evaluation metrics (mean reward, mean length, etc.)
     """
+    eval_params = env_params if env_params is not None else env.default_params
 
     def _eval_episode(key):
         """Run single evaluation episode."""
         key, reset_key = jax.random.split(key)
-        obs, env_state = env.reset(reset_key, env.default_params)
+        obs, env_state = env.reset(reset_key, eval_params)
 
         def _step(carry, _):
             env_state, obs, key, total_reward, done = carry
@@ -578,7 +596,7 @@ def evaluate(
 
             # Step (discard info dict containing breakdown)
             next_obs, next_env_state, reward, next_done, _info = env.step(
-                step_key, env_state, action, env.default_params
+                step_key, env_state, action, eval_params
             )
 
             # Only accumulate if not already done

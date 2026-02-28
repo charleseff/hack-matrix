@@ -53,6 +53,9 @@ def calculate_reward(
     game_won: jnp.bool_,
     player_died: jnp.bool_,
     action: jnp.int32,
+    distance_shaping_coef: jnp.float32 = jnp.float32(DISTANCE_SHAPING_COEF),
+    siphon_death_penalty: jnp.float32 = jnp.float32(SIPHON_CAUSED_DEATH_PENALTY),
+    data_siphon_reward: jnp.float32 = jnp.float32(1.0),
 ) -> tuple[jnp.float32, dict[str, jnp.float32]]:
     """Calculate reward for this transition, returning total and per-component breakdown.
 
@@ -60,22 +63,10 @@ def calculate_reward(
     Returns (total_reward, breakdown_dict) where breakdown_dict has 15 keys
     that sum to total_reward.
 
-    Breakdown keys:
-    - step_penalty: -0.01 per step
-    - stage_completion: [1, 2, 4, 8, 16, 32, 64, 100]
-    - score_gain: delta * 0.5
-    - kills: 0.3 per enemy killed
-    - data_siphon: 1.0 per siphon collected
-    - distance_shaping: +0.05 per cell closer to exit (one-directional)
-    - damage_penalty: -1.0 per HP lost (negative part of hp_delta)
-    - hp_recovery: +1.0 per HP gained (positive part of hp_delta)
-    - victory: 500 + score * 100
-    - death_penalty: -0.5 * sum(stage rewards for completed stages)
-    - siphon_death_penalty: extra -10.0 for dying to siphon-spawned enemy
-    - resource_gain: credits_delta * 0.05 + energy_delta * 0.05
-    - resource_holding: (credits * 0.01 + energy * 0.01) on stage completion
-    - program_waste: -0.3 for RESET at 2 HP
-    - siphon_quality: -0.5 * (missed_credits * 0.05 + missed_energy * 0.05)
+    Curriculum-tunable parameters:
+    - distance_shaping_coef: reward per cell closer to exit (default 0.05)
+    - siphon_death_penalty: extra penalty for dying to siphon-spawned enemy (default -10.0)
+    - data_siphon_reward: reward per siphon collected (default 1.0)
     """
     # Step penalty (creates urgency to reach exit)
     step_penalty = jnp.float32(STEP_PENALTY)
@@ -100,11 +91,11 @@ def calculate_reward(
     kills_count = jnp.maximum(prev_enemy_count - curr_enemy_count, 0)
     kills = jnp.float32(kills_count) * 0.3
 
-    # Data siphon collection reward (1.0)
+    # Data siphon collection reward (curriculum-tunable)
     prev_siphons = state.previous_player.data_siphons
     curr_siphons = state.player.data_siphons
     siphons_collected = jnp.maximum(curr_siphons - prev_siphons, 0)
-    data_siphon = jnp.float32(siphons_collected) * 1.0
+    data_siphon = jnp.float32(siphons_collected) * data_siphon_reward
 
     # Distance shaping via BFS (one-directional: only reward getting closer)
     # prev_distance was pre-computed before the action in save_previous_state
@@ -118,7 +109,7 @@ def calculate_reward(
     )
     curr_distance = jnp.where(curr_bfs < 0, jnp.int32(0), curr_bfs)
     distance_delta = prev_distance - curr_distance  # Positive if moved closer
-    distance_shaping = jnp.float32(jnp.maximum(distance_delta, 0) * DISTANCE_SHAPING_COEF)
+    distance_shaping = jnp.float32(jnp.maximum(distance_delta, 0)) * distance_shaping_coef
 
     # HP change — split into damage_penalty (negative) and hp_recovery (positive)
     # Total HP reward = hp_delta * 1.0 = damage_penalty + hp_recovery
@@ -143,12 +134,12 @@ def calculate_reward(
         lambda: jnp.float32(0.0),
     )
 
-    # Siphon-caused death penalty: extra -10.0 when dying to siphon-spawned enemy
+    # Siphon-caused death penalty: curriculum-tunable when dying to siphon-spawned enemy
     # Swift: scan enemies for any adjacent to player with spawnedFromSiphon == true
     # Adjacent = cardinal only (Manhattan distance 1, not diagonal)
-    siphon_death_penalty = jnp.where(
+    siphon_death_pen = jnp.where(
         player_died & _any_adjacent_siphon_enemy(state),
-        jnp.float32(SIPHON_CAUSED_DEATH_PENALTY),
+        siphon_death_penalty,
         jnp.float32(0.0),
     )
 
@@ -197,7 +188,7 @@ def calculate_reward(
     total = (
         step_penalty + stage_completion + score_gain + kills + data_siphon
         + distance_shaping + damage_penalty + hp_recovery + victory
-        + death_penalty + siphon_death_penalty + resource_gain
+        + death_penalty + siphon_death_pen + resource_gain
         + resource_holding + program_waste + siphon_quality
     )
 
@@ -212,7 +203,7 @@ def calculate_reward(
         "hp_recovery": hp_recovery,
         "victory": victory,
         "death_penalty": death_penalty,
-        "siphon_death_penalty": siphon_death_penalty,
+        "siphon_death_penalty": siphon_death_pen,
         "resource_gain": resource_gain,
         "resource_holding": resource_holding,
         "program_waste": program_waste,
